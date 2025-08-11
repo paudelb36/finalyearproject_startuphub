@@ -1,103 +1,240 @@
-import Image from "next/image";
+'use client'
 
-export default function Home() {
+import { useState, useEffect } from 'react'
+import { useAuth } from '@/hooks/useAuth'
+import { supabase } from '@/lib/supabase'
+import Link from 'next/link'
+import Image from 'next/image'
+
+export default function HomePage() {
+  const { user, loading } = useAuth()
+  const [startups, setStartups] = useState([])
+  const [updates, setUpdates] = useState([])
+  const [events, setEvents] = useState([])
+  const [loadingData, setLoadingData] = useState(true)
+
+  useEffect(() => {
+    fetchHomeData()
+  }, [])
+
+  const fetchHomeData = async () => {
+    try {
+      // Fetch recent startups
+      const { data: startupsData } = await supabase
+        .from('startup_profiles')
+        .select(`
+          *,
+          profiles!startup_profiles_user_id_fkey(full_name, avatar_url)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(6)
+
+      // Fetch recent updates
+      const { data: updatesData } = await supabase
+        .from('startup_updates')
+        .select(`
+          *,
+          startup_profiles!startup_updates_startup_id_fkey(company_name, logo_url, slug)
+        `)
+        .eq('is_public', true)
+        .order('created_at', { ascending: false })
+        .limit(5)
+
+      // Fetch upcoming events
+      const { data: eventsData } = await supabase
+        .from('events')
+        .select('*')
+        .eq('is_public', true)
+        .gte('start_date', new Date().toISOString())
+        .order('start_date', { ascending: true })
+        .limit(4)
+
+      setStartups(startupsData || [])
+      setUpdates(updatesData || [])
+      setEvents(eventsData || [])
+    } catch (error) {
+      console.error('Error fetching home data:', error)
+    } finally {
+      setLoadingData(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      </div>
+    )
+  }
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.js
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <div className="space-y-12">
+      {/* Hero Section */}
+      <section className="text-center py-20 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg">
+        <h1 className="text-5xl font-bold mb-6">
+          Connect. Grow. Succeed.
+        </h1>
+        <p className="text-xl mb-8 max-w-2xl mx-auto">
+          The ultimate platform connecting startups, mentors, and investors to build the future together.
+        </p>
+        {!user ? (
+          <div className="space-x-4">
+            <Link href="/auth/signup" className="bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors">
+              Get Started
+            </Link>
+            <Link href="/auth/signin" className="border-2 border-white text-white px-8 py-3 rounded-lg font-semibold hover:bg-white hover:text-blue-600 transition-colors">
+              Sign In
+            </Link>
+          </div>
+        ) : (
+          <Link href="/dashboard" className="bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors">
+            Go to Dashboard
+          </Link>
+        )}
+      </section>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+      {/* Featured Startups */}
+      <section>
+        <div className="flex justify-between items-center mb-8">
+          <h2 className="text-3xl font-bold text-gray-900">Featured Startups</h2>
+          <Link href="/startups" className="text-blue-600 hover:text-blue-800 font-semibold">
+            View All →
+          </Link>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        {loadingData ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="bg-white rounded-lg shadow-md p-6 animate-pulse">
+                <div className="h-4 bg-gray-200 rounded mb-4"></div>
+                <div className="h-3 bg-gray-200 rounded mb-2"></div>
+                <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {startups.map((startup) => (
+              <Link key={startup.id} href={`/startups/${startup.slug}`} className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-6">
+                <div className="flex items-center mb-4">
+                  {startup.logo_url && (
+                    <Image
+                      src={startup.logo_url}
+                      alt={startup.company_name}
+                      width={48}
+                      height={48}
+                      className="rounded-lg mr-3"
+                    />
+                  )}
+                  <div>
+                    <h3 className="font-semibold text-lg">{startup.company_name}</h3>
+                    <p className="text-gray-600 text-sm">{startup.industry}</p>
+                  </div>
+                </div>
+                <p className="text-gray-700 mb-3">{startup.tagline}</p>
+                <div className="flex justify-between items-center text-sm text-gray-500">
+                  <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                    {startup.stage}
+                  </span>
+                  <span>{startup.location}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Recent Updates */}
+      <section>
+        <div className="flex justify-between items-center mb-8">
+          <h2 className="text-3xl font-bold text-gray-900">Latest Updates</h2>
+          <Link href="/feed" className="text-blue-600 hover:text-blue-800 font-semibold">
+            View All →
+          </Link>
+        </div>
+        {loadingData ? (
+          <div className="space-y-4">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="bg-white rounded-lg shadow-md p-6 animate-pulse">
+                <div className="h-4 bg-gray-200 rounded mb-4"></div>
+                <div className="h-3 bg-gray-200 rounded mb-2"></div>
+                <div className="h-3 bg-gray-200 rounded w-3/4"></div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {updates.map((update) => (
+              <div key={update.id} className="bg-white rounded-lg shadow-md p-6">
+                <div className="flex items-center mb-4">
+                  {update.startup_profiles?.logo_url && (
+                    <Image
+                      src={update.startup_profiles.logo_url}
+                      alt={update.startup_profiles.company_name}
+                      width={40}
+                      height={40}
+                      className="rounded-lg mr-3"
+                    />
+                  )}
+                  <div>
+                    <Link href={`/startups/${update.startup_profiles?.slug}`} className="font-semibold text-lg hover:text-blue-600">
+                      {update.startup_profiles?.company_name}
+                    </Link>
+                    <p className="text-gray-500 text-sm">
+                      {new Date(update.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+                <h3 className="font-semibold text-xl mb-2">{update.title}</h3>
+                <p className="text-gray-700">{update.content}</p>
+                {update.milestone_type && (
+                  <span className="inline-block mt-3 bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm">
+                    {update.milestone_type}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Upcoming Events */}
+      <section>
+        <div className="flex justify-between items-center mb-8">
+          <h2 className="text-3xl font-bold text-gray-900">Upcoming Events</h2>
+          <Link href="/events" className="text-blue-600 hover:text-blue-800 font-semibold">
+            View All →
+          </Link>
+        </div>
+        {loadingData ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="bg-white rounded-lg shadow-md p-6 animate-pulse">
+                <div className="h-4 bg-gray-200 rounded mb-4"></div>
+                <div className="h-3 bg-gray-200 rounded mb-2"></div>
+                <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {events.map((event) => (
+              <Link key={event.id} href={`/events/${event.id}`} className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-6">
+                <div className="flex justify-between items-start mb-4">
+                  <h3 className="font-semibold text-lg">{event.title}</h3>
+                  <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded text-sm">
+                    {event.event_type}
+                  </span>
+                </div>
+                <p className="text-gray-700 mb-4">{event.description}</p>
+                <div className="text-sm text-gray-500">
+                  <p>📅 {new Date(event.start_date).toLocaleDateString()}</p>
+                  <p>📍 {event.is_virtual ? 'Virtual' : event.location}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
-  );
+  )
 }
