@@ -201,92 +201,98 @@ export default function ExplorePage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {activeTab === 'startups' && filteredData().map((startup) => (
-              <div key={startup.id} className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
-                <div className="flex items-start space-x-4">
-                  <div className="w-12 h-12 bg-gray-200 rounded-lg flex items-center justify-center flex-shrink-0">
-                    {startup.logo_url ? (
-                      <Image
-                        src={startup.logo_url}
-                        alt={startup.company_name}
-                        width={48}
-                        height={48}
-                        className="rounded-lg"
-                      />
-                    ) : (
-                      <span className="text-xl">🚀</span>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-lg font-semibold text-gray-900 truncate">{startup.company_name}</h3>
-                    <p className="text-sm text-gray-600 mb-2">{startup.tagline}</p>
-                    <p className="text-sm text-gray-500 line-clamp-2">{startup.description}</p>
-                    <div className="mt-3 flex items-center space-x-4 text-xs text-gray-500">
-                      <span>📍 {startup.location}</span>
-                      <span>🏢 {startup.industry}</span>
-                      <span>📈 {startup.stage}</span>
+              <Link key={startup.id} href={`/profile/${startup.user_id}`}>
+                <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer">
+                  <div className="flex items-start space-x-4">
+                    <div className="w-12 h-12 bg-gray-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                      {startup.logo_url ? (
+                        <Image
+                          src={startup.logo_url}
+                          alt={startup.company_name}
+                          width={48}
+                          height={48}
+                          className="rounded-lg"
+                        />
+                      ) : (
+                        <span className="text-xl">🚀</span>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-lg font-semibold text-gray-900 truncate">{startup.company_name}</h3>
+                      <p className="text-sm text-gray-600 mb-2">{startup.tagline}</p>
+                      <p className="text-sm text-gray-500 line-clamp-2">{startup.description}</p>
+                      <div className="mt-3 flex items-center space-x-4 text-xs text-gray-500">
+                        <span>📍 {startup.location}</span>
+                        <span>🏢 {startup.industry}</span>
+                        <span>📈 {startup.stage}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              </Link>
             ))}
 
             {activeTab === 'mentors' && filteredData().map((mentor) => (
-              <div key={mentor.id} className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
-                <div className="flex items-start space-x-4">
-                  <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
-                    {mentor.profiles?.avatar_url ? (
-                      <Image
-                        src={mentor.profiles.avatar_url}
-                        alt={mentor.profiles.full_name}
-                        width={48}
-                        height={48}
-                        className="rounded-full"
-                      />
-                    ) : (
-                      <span className="text-xl">👤</span>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-lg font-semibold text-gray-900 truncate">{mentor.profiles?.full_name}</h3>
-                    <p className="text-sm text-gray-600 mb-2">{mentor.job_title} at {mentor.company}</p>
-                    <p className="text-sm text-gray-500 line-clamp-2">{mentor.profiles?.bio}</p>
-                    <div className="mt-3 flex items-center space-x-4 text-xs text-gray-500">
-                      <span>⏰ {mentor.availability}</span>
-                      <span>💼 {mentor.years_experience}+ years</span>
-                      {mentor.is_paid && <span>💰 Paid</span>}
+              <Link key={mentor.id} href={`/profile/${mentor.user_id}`}>
+                <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer">
+                  <div className="flex items-start space-x-4">
+                    <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
+                      {mentor.profiles?.avatar_url ? (
+                        <Image
+                          src={mentor.profiles.avatar_url}
+                          alt={mentor.profiles.full_name}
+                          width={48}
+                          height={48}
+                          className="rounded-full"
+                        />
+                      ) : (
+                        <span className="text-xl">👤</span>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-lg font-semibold text-gray-900 truncate">{mentor.profiles?.full_name}</h3>
+                      <p className="text-sm text-gray-600 mb-2">{mentor.job_title} at {mentor.company}</p>
+                      <p className="text-sm text-gray-500 line-clamp-2">{mentor.profiles?.bio}</p>
+                      <div className="mt-3 flex items-center space-x-4 text-xs text-gray-500">
+                        <span>⏰ {mentor.availability}</span>
+                        <span>💼 {mentor.years_experience}+ years</span>
+                        {mentor.is_paid && <span>💰 Paid</span>}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              </Link>
             ))}
 
             {activeTab === 'investors' && filteredData().map((investor) => (
-              <div key={investor.id} className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
-                <div className="flex items-start space-x-4">
-                  <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
-                    {investor.profiles?.avatar_url ? (
-                      <Image
-                        src={investor.profiles.avatar_url}
-                        alt={investor.profiles.full_name}
-                        width={48}
-                        height={48}
-                        className="rounded-full"
-                      />
-                    ) : (
-                      <span className="text-xl">💰</span>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-lg font-semibold text-gray-900 truncate">{investor.profiles?.full_name}</h3>
-                    <p className="text-sm text-gray-600 mb-2">{investor.fund_name}</p>
-                    <p className="text-sm text-gray-500 line-clamp-2">{investor.profiles?.bio}</p>
-                    <div className="mt-3 flex items-center space-x-4 text-xs text-gray-500">
-                      <span>💵 ${investor.ticket_size_min?.toLocaleString()} - ${investor.ticket_size_max?.toLocaleString()}</span>
-                      <span>🏢 {investor.portfolio_companies} companies</span>
+              <Link key={investor.id} href={`/profile/${investor.user_id}`}>
+                <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer">
+                  <div className="flex items-start space-x-4">
+                    <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
+                      {investor.profiles?.avatar_url ? (
+                        <Image
+                          src={investor.profiles.avatar_url}
+                          alt={investor.profiles.full_name}
+                          width={48}
+                          height={48}
+                          className="rounded-full"
+                        />
+                      ) : (
+                        <span className="text-xl">💰</span>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-lg font-semibold text-gray-900 truncate">{investor.profiles?.full_name}</h3>
+                      <p className="text-sm text-gray-600 mb-2">{investor.fund_name}</p>
+                      <p className="text-sm text-gray-500 line-clamp-2">{investor.profiles?.bio}</p>
+                      <div className="mt-3 flex items-center space-x-4 text-xs text-gray-500">
+                        <span>💵 ${investor.ticket_size_min?.toLocaleString()} - ${investor.ticket_size_max?.toLocaleString()}</span>
+                        <span>🏢 {investor.portfolio_companies} companies</span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              </Link>
             ))}
 
             {activeTab === 'events' && filteredData().map((event) => (

@@ -5,8 +5,7 @@ import { requireAuth, sendNotification, logActivity } from './auth'
  * Get platform statistics for admin dashboard
  * @returns {Object} Platform statistics
  */
-// Option 1: Modify getPlatformStats to work with admin session (Recommended)
-// Replace your getPlatformStats function with this:
+
 
 export async function getPlatformStats() {
   try {

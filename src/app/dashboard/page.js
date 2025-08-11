@@ -7,6 +7,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { toast } from "react-hot-toast";
 import { getEventDetailsAsAdmin } from "@/lib/api/admin";
+import { getUserConnections, getConnectionStats } from "@/lib/api/connections";
+import { getUserEventRegistrations } from "@/lib/api/eventRegistration";
 // StartupProfileManager moved to separate profile page
 
 export default function DashboardPage() {
@@ -14,9 +16,10 @@ export default function DashboardPage() {
   const [profile, setProfile] = useState(null);
   const [stats, setStats] = useState({
     connections: 0,
-    messages: 0,
-    events: 0,
-    updates: 0,
+    mentors: 0,
+    investors: 0,
+    fundingRaised: 0,
+    profileCompletion: 0,
   });
   const [recentActivity, setRecentActivity] = useState([]);
   const [recentEvents, setRecentEvents] = useState([]);
@@ -25,6 +28,11 @@ export default function DashboardPage() {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
+  const [connections, setConnections] = useState([]);
+  const [mentors, setMentors] = useState([]);
+  const [investors, setInvestors] = useState([]);
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [userRegistrations, setUserRegistrations] = useState([]);
 
   useEffect(() => {
     if (user) {
@@ -118,6 +126,8 @@ export default function DashboardPage() {
         await fetchStats(profileData.role);
         await fetchRecentActivity(profileData.role);
         await fetchRecentEvents();
+        await fetchConnections();
+        await fetchTeamMembers(profileData.role, roleSpecificData);
       }
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
@@ -132,48 +142,29 @@ export default function DashboardPage() {
 
   const fetchStats = async (userRole) => {
     try {
-      // Connections count
-      const { count: connectionsCount } = await supabase
-        .from("connections")
-        .select("*", { count: "exact", head: true })
-        .or(`requester_id.eq.${user.id},recipient_id.eq.${user.id}`)
-        .eq("status", "accepted");
+      // Get connection statistics
+      const connectionStats = await getConnectionStats(user.id);
+      
+      // Calculate profile completion
+      let profileCompletion = 0;
+      if (profile) {
+        const fields = ['full_name', 'email', 'avatar_url', 'bio'];
+        const completedFields = fields.filter(field => profile[field]);
+        profileCompletion = Math.round((completedFields.length / fields.length) * 100);
+      }
 
-      // Messages count
-      const { count: messagesCount } = await supabase
-        .from("messages")
-        .select("*", { count: "exact", head: true })
-        .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`);
-
-      // Events count (registered)
-      const { count: eventsCount } = await supabase
-        .from("event_registrations")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", user.id);
-
-      let updatesCount = 0;
-      if (userRole === "startup") {
-        // For startups, count their updates
-        const { data: startupProfile } = await supabase
-          .from("startup_profiles")
-          .select("id")
-          .eq("user_id", user.id)
-          .single();
-
-        if (startupProfile) {
-          const { count } = await supabase
-            .from("startup_updates")
-            .select("*", { count: "exact", head: true })
-            .eq("startup_id", startupProfile.id);
-          updatesCount = count;
-        }
+      // Get funding raised for startups
+      let fundingRaised = 0;
+      if (userRole === "startup" && profile?.roleSpecificData) {
+        fundingRaised = profile.roleSpecificData.funding_raised || 0;
       }
 
       setStats({
-        connections: connectionsCount || 0,
-        messages: messagesCount || 0,
-        events: eventsCount || 0,
-        updates: updatesCount,
+        connections: connectionStats.total_connections || 0,
+        mentors: connectionStats.mentors_count || 0,
+        investors: connectionStats.investors_count || 0,
+        fundingRaised,
+        profileCompletion,
       });
     } catch (error) {
       console.error("Error fetching stats:", error);
@@ -301,6 +292,56 @@ export default function DashboardPage() {
     }
   };
 
+  const fetchConnections = async () => {
+    try {
+      const allConnections = await getUserConnections(user.id);
+      const mentorConnections = allConnections.filter(conn => conn.connected_user?.role === 'mentor');
+      const investorConnections = allConnections.filter(conn => conn.connected_user?.role === 'investor');
+      
+      setConnections(allConnections);
+      setMentors(mentorConnections);
+      setInvestors(investorConnections);
+    } catch (error) {
+      console.error("Error fetching connections:", error);
+    }
+  };
+
+  const fetchTeamMembers = async (userRole, roleSpecificData) => {
+    try {
+      if (userRole === 'startup' && roleSpecificData?.team_members) {
+        // Add the logged-in user as founder
+        const founder = {
+          id: user.id,
+          name: profile?.full_name || 'You',
+          role: 'Founder',
+          email: profile?.email,
+          avatar_url: profile?.avatar_url
+        };
+        
+        const members = roleSpecificData.team_members.map(member => ({
+          id: member.id,
+          name: member.name,
+          role: member.role,
+          email: member.email,
+          avatar_url: member.avatar_url
+        }));
+        
+        setTeamMembers([founder, ...members]);
+      } else {
+        // For non-startup users, just show themselves
+        setTeamMembers([{
+          id: user.id,
+          name: profile?.full_name || 'You',
+          role: userRole === 'mentor' ? 'Mentor' : userRole === 'investor' ? 'Investor' : 'User',
+          email: profile?.email,
+          avatar_url: profile?.avatar_url
+        }]);
+      }
+    } catch (error) {
+      console.error("Error fetching team members:", error);
+    }
+  };
+
   const handleEventClick = async (eventId) => {
     try {
       const eventData = await getEventDetailsAsAdmin(eventId);
@@ -358,11 +399,11 @@ export default function DashboardPage() {
               </div>
             </div>
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
               <div className="bg-white rounded-lg shadow-sm p-6 text-center">
                 <div className="text-blue-600 text-3xl mb-2">👥</div>
                 <div className="text-3xl font-bold text-gray-900">
-                  {stats.connections || 12}
+                  {stats.connections || 0}
                 </div>
                 <div className="text-sm text-gray-600">Connections</div>
               </div>
@@ -370,7 +411,7 @@ export default function DashboardPage() {
               <div className="bg-white rounded-lg shadow-sm p-6 text-center">
                 <div className="text-purple-600 text-3xl mb-2">🎯</div>
                 <div className="text-3xl font-bold text-gray-900">
-                  {stats.events || 4}
+                  {stats.mentors || 0}
                 </div>
                 <div className="text-sm text-gray-600">Mentors</div>
               </div>
@@ -378,7 +419,7 @@ export default function DashboardPage() {
               <div className="bg-white rounded-lg shadow-sm p-6 text-center">
                 <div className="text-green-600 text-3xl mb-2">💰</div>
                 <div className="text-3xl font-bold text-gray-900">
-                  {stats.messages || 3}
+                  {stats.investors || 0}
                 </div>
                 <div className="text-sm text-gray-600">Investors</div>
               </div>
@@ -386,17 +427,9 @@ export default function DashboardPage() {
               <div className="bg-white rounded-lg shadow-sm p-6 text-center">
                 <div className="text-orange-600 text-3xl mb-2">💵</div>
                 <div className="text-3xl font-bold text-gray-900">
-                  Rs. 25,000
+                  {stats.fundingRaised ? `Rs. ${stats.fundingRaised.toLocaleString()}` : 'Rs. 0'}
                 </div>
                 <div className="text-sm text-gray-600">Funding Raised</div>
-              </div>
-
-              <div className="bg-white rounded-lg shadow-sm p-6 text-center">
-                <div className="text-green-600 text-3xl mb-2">✅</div>
-                <div className="text-3xl font-bold text-gray-900">
-                  {profileProgress}%
-                </div>
-                <div className="text-sm text-gray-600">Profile Complete</div>
               </div>
             </div>
 
@@ -475,6 +508,36 @@ export default function DashboardPage() {
                 >
                   Complete Profile
                 </Link>
+              </div>
+            </div>
+
+            {/* Team Members Section */}
+            <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
+              <h3 className="text-xl font-semibold text-gray-900 mb-6">Team Members</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {teamMembers.map((member) => (
+                  <div key={member.id} className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg">
+                    <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
+                      {member.avatar_url ? (
+                        <Image
+                          src={member.avatar_url}
+                          alt={member.name}
+                          width={48}
+                          height={48}
+                          className="rounded-full"
+                        />
+                      ) : (
+                        <span className="text-lg font-semibold text-gray-600">
+                          {member.name.charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-medium text-gray-900">{member.name}</h4>
+                      <p className="text-sm text-gray-600">{member.role}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -579,13 +642,10 @@ export default function DashboardPage() {
       case "connections":
         return (
           <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">
-              My Connections
-            </h2>
-            <p className="text-gray-600">
-              Manage your professional connections here.
-            </p>
-            <div className="mt-4">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-gray-900">
+                Your Connections ({connections.length})
+              </h2>
               <Link
                 href="/explore"
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
@@ -593,18 +653,55 @@ export default function DashboardPage() {
                 Find New Connections
               </Link>
             </div>
+            {connections.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {connections.map((connection) => (
+                  <div key={connection.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
+                        {connection.connected_user?.avatar_url ? (
+                          <Image
+                            src={connection.connected_user.avatar_url}
+                            alt={connection.connected_user.full_name}
+                            width={48}
+                            height={48}
+                            className="rounded-full"
+                          />
+                        ) : (
+                          <span className="text-lg font-semibold text-gray-600">
+                            {connection.connected_user?.full_name?.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-medium text-gray-900">{connection.connected_user?.full_name}</h3>
+                        <p className="text-sm text-gray-600 capitalize">{connection.connected_user?.role}</p>
+                        <p className="text-xs text-gray-500">Connected on {new Date(connection.created_at).toLocaleDateString()}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-gray-600 mb-4">You haven't connected with anyone yet.</p>
+                <Link
+                  href="/explore"
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Start Connecting
+                </Link>
+              </div>
+            )}
           </div>
         );
       case "mentors":
         return (
           <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">
-              Connected Mentors
-            </h2>
-            <p className="text-gray-600">
-              View and manage your mentor relationships.
-            </p>
-            <div className="mt-4">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-gray-900">
+                Connected Mentors ({mentors.length})
+              </h2>
               <Link
                 href="/explore"
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
@@ -612,18 +709,55 @@ export default function DashboardPage() {
                 Find Mentors
               </Link>
             </div>
+            {mentors.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {mentors.map((mentor) => (
+                  <div key={mentor.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
+                        {mentor.connected_user?.avatar_url ? (
+                          <Image
+                            src={mentor.connected_user.avatar_url}
+                            alt={mentor.connected_user.full_name}
+                            width={48}
+                            height={48}
+                            className="rounded-full"
+                          />
+                        ) : (
+                          <span className="text-lg font-semibold text-gray-600">
+                            {mentor.connected_user?.full_name?.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-medium text-gray-900">{mentor.connected_user?.full_name}</h3>
+                        <p className="text-sm text-gray-600">Mentor</p>
+                        <p className="text-xs text-gray-500">Connected on {new Date(mentor.created_at).toLocaleDateString()}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-gray-600 mb-4">You haven't connected with any mentors yet.</p>
+                <Link
+                  href="/explore"
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Find Mentors
+                </Link>
+              </div>
+            )}
           </div>
         );
       case "investors":
         return (
           <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">
-              Connected Investors
-            </h2>
-            <p className="text-gray-600">
-              Track your investor relationships and funding opportunities.
-            </p>
-            <div className="mt-4">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-gray-900">
+                Connected Investors ({investors.length})
+              </h2>
               <Link
                 href="/explore"
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
@@ -631,6 +765,46 @@ export default function DashboardPage() {
                 Find Investors
               </Link>
             </div>
+            {investors.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {investors.map((investor) => (
+                  <div key={investor.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
+                        {investor.connected_user?.avatar_url ? (
+                          <Image
+                            src={investor.connected_user.avatar_url}
+                            alt={investor.connected_user.full_name}
+                            width={48}
+                            height={48}
+                            className="rounded-full"
+                          />
+                        ) : (
+                          <span className="text-lg font-semibold text-gray-600">
+                            {investor.connected_user?.full_name?.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-medium text-gray-900">{investor.connected_user?.full_name}</h3>
+                        <p className="text-sm text-gray-600">Investor</p>
+                        <p className="text-xs text-gray-500">Connected on {new Date(investor.created_at).toLocaleDateString()}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-gray-600 mb-4">You haven't connected with any investors yet.</p>
+                <Link
+                  href="/explore"
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Find Investors
+                </Link>
+              </div>
+            )}
           </div>
         );
       case "messages":
@@ -835,18 +1009,6 @@ export default function DashboardPage() {
 
       {/* Main Content */}
       <div className="flex-1 p-8">
-        {/* Header */}
-        {/* <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              Welcome, {profile?.full_name || "Founder"}!
-            </h1>
-            <p className="text-gray-600 mt-1">
-              Here&apos;s your startup dashboard overview.
-            </p>
-          </div>
-        </div> */}
-
         {/* Tab Content */}
         {renderTabContent()}
       </div>
