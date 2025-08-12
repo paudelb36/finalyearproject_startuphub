@@ -74,7 +74,7 @@ export default function StartupProfilePage() {
     const { data } = await supabase
       .from('connections')
       .select('status')
-      .or(`and(requester_id.eq.${user.id},recipient_id.eq.${startup.user_id}),and(requester_id.eq.${startup.user_id},recipient_id.eq.${user.id})`)
+      .or(`and(requester_id.eq.${user.id},target_id.eq.${startup.user_id}),and(requester_id.eq.${startup.user_id},target_id.eq.${user.id})`)
       .single()
 
     if (data) {
@@ -94,7 +94,7 @@ export default function StartupProfilePage() {
         .from('connections')
         .insert({
           requester_id: user.id,
-          recipient_id: startup.user_id,
+          target_id: startup.user_id,
           connection_type: 'startup_startup',
           message: `Hi! I'd like to connect with ${startup.company_name}.`
         })
@@ -130,7 +130,7 @@ export default function StartupProfilePage() {
     return (
       <div className="text-center py-20">
         <h1 className="text-2xl font-bold text-gray-900 mb-4">Startup Not Found</h1>
-        <p className="text-gray-600 mb-8">The startup you're looking for doesn't exist.</p>
+        <p className="text-gray-600 mb-8">The startup you&apos;re looking for doesn&apos;t exist.</p>
         <Link href="/startups" className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700">
           Browse Startups
         </Link>

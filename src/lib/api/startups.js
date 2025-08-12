@@ -12,7 +12,7 @@ export async function getStartups(filters = {}) {
       .from('startup_profiles')
       .select(`
         *,
-        profiles!startup_profiles_user_id_fkey(
+        profiles!inner(
           id,
           email,
           full_name,
@@ -70,7 +70,7 @@ export async function getStartupBySlug(slug) {
       .from('startup_profiles')
       .select(`
         *,
-        profiles!startup_profiles_user_id_fkey(
+        profiles!inner(
           id,
           email,
           full_name,
@@ -413,7 +413,7 @@ export async function searchStartups(searchParams) {
       .from('startup_profiles')
       .select(`
         *,
-        profiles!startup_profiles_user_id_fkey(
+        profiles!inner(
           id,
           full_name,
           avatar_url

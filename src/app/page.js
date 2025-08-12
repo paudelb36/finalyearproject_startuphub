@@ -166,34 +166,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Stats Section */}
-      <section className="py-16 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 text-center">
-            <div className="group hover:scale-105 transition-transform">
-              <div className="text-4xl font-bold text-blue-600 mb-2">1000+</div>
-              <div className="text-gray-600 font-medium">Startups</div>
-            </div>
-            <div className="group hover:scale-105 transition-transform">
-              <div className="text-4xl font-bold text-purple-600 mb-2">
-                500+
-              </div>
-              <div className="text-gray-600 font-medium">Mentors</div>
-            </div>
-            <div className="group hover:scale-105 transition-transform">
-              <div className="text-4xl font-bold text-green-600 mb-2">200+</div>
-              <div className="text-gray-600 font-medium">Investors</div>
-            </div>
-            <div className="group hover:scale-105 transition-transform">
-              <div className="text-4xl font-bold text-orange-600 mb-2">
-                $50M+
-              </div>
-              <div className="text-gray-600 font-medium">Funding Raised</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-20 py-16">
         {/* Featured Startups */}
         <section>
@@ -857,7 +829,6 @@ export default function HomePage() {
       </section>
 
       {/*Footer*/}
-      {/* Enhanced Footer with Back to Top Button */}
       <>
         {/* Back to Top Button */}
         <button

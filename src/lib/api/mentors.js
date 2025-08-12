@@ -12,7 +12,7 @@ export async function getMentors(filters = {}) {
       .from('mentor_profiles')
       .select(`
         *,
-        profiles!mentor_profiles_user_id_fkey(
+        profiles!inner(
           id,
           email,
           full_name,
@@ -77,7 +77,7 @@ export async function getMentorById(mentorId) {
       .from('mentor_profiles')
       .select(`
         *,
-        profiles!mentor_profiles_user_id_fkey(
+        profiles!inner(
           id,
           email,
           full_name,
@@ -350,7 +350,7 @@ export async function getMentorshipRequests(mentorId, status = null) {
       .from('connections')
       .select(`
         *,
-        requester:profiles!connections_requester_id_fkey(
+        requester:profiles!inner(
           id,
           full_name,
           avatar_url
@@ -444,7 +444,7 @@ export async function searchMentors(searchParams) {
       .from('mentor_profiles')
       .select(`
         *,
-        profiles!mentor_profiles_user_id_fkey(
+        profiles!inner(
           id,
           full_name,
           avatar_url

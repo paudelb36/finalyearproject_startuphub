@@ -5,6 +5,8 @@ import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import StartupProfileManager from '@/components/StartupProfileManager'
+import MentorProfileManager from '@/components/MentorProfileManager'
+import InvestorProfileManager from '@/components/InvestorProfileManager'
 
 export default function ProfilePage() {
   const { user, loading: authLoading } = useAuth()
@@ -56,16 +58,10 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8">
+    <div className="max-w-7xl mx-auto space-y-6">
       {/* Header */}
-      <div className="bg-white  p-6">
+      <div className="bg-white  p-4">
         <div className="flex items-center justify-between">
-          {/* <div>
-            <h1 className="text-3xl font-bold text-gray-900">Profile Management</h1>
-            <p className="text-gray-600 mt-1">
-              Manage your {profile?.role} profile information and settings
-            </p>
-          </div> */}
           <Link
             href="/dashboard"
             className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
@@ -83,6 +79,22 @@ export default function ProfilePage() {
             <p className="text-gray-600 mt-1">Manage your startup information, team, and pitch materials</p>
           </div>
           <StartupProfileManager />
+        </div>
+      ) : profile?.role === 'mentor' ? (
+        <div className="bg-white rounded-lg shadow-md">
+          <div className="p-6 border-b border-gray-200">
+            <h2 className="text-xl font-bold text-gray-900">Mentor Profile Management</h2>
+            <p className="text-gray-600 mt-1">Manage your mentorship information, expertise, and availability</p>
+          </div>
+          <MentorProfileManager />
+        </div>
+      ) : profile?.role === 'investor' ? (
+        <div className="bg-white rounded-lg shadow-md">
+          <div className="p-6 border-b border-gray-200">
+            <h2 className="text-xl font-bold text-gray-900">Investor Profile Management</h2>
+            <p className="text-gray-600 mt-1">Manage your investment preferences, fund information, and portfolio</p>
+          </div>
+          <InvestorProfileManager />
         </div>
       ) : (
         <div className="bg-white rounded-lg shadow-md p-6">

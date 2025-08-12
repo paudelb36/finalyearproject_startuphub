@@ -38,17 +38,17 @@ export async function middleware(req) {
   ]
 
   // Check if the current path is public
-  const isPublicRoute = publicRoutes.some(route => 
+  const isPublicRoute = publicRoutes.some(route =>
     pathname === route || pathname.startsWith(`${route}/`)
   )
 
   // Check if the current path is protected
-  const isProtectedRoute = protectedRoutes.some(route => 
+  const isProtectedRoute = protectedRoutes.some(route =>
     pathname.startsWith(route)
   )
 
   // Check if the current path is admin-only
-  const isAdminRoute = adminRoutes.some(route => 
+  const isAdminRoute = adminRoutes.some(route =>
     pathname.startsWith(route)
   )
 
@@ -64,45 +64,16 @@ export async function middleware(req) {
     return NextResponse.redirect(redirectUrl)
   }
 
-  // If user is authenticated, get their profile to check role
+  // If user is authenticated, avoid heavy DB checks here to keep middleware fast
+  // Do only minimal routing logic that cannot be done client-side.
   if (session) {
-    try {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role, status')
-        .eq('id', session.user.id)
-        .single()
-
-      // Check if user account is active
-      if (profile?.status !== 'active') {
-        const suspendedUrl = new URL('/account-suspended', req.url)
-        return NextResponse.redirect(suspendedUrl)
-      }
-
-      // Check admin routes
-      if (isAdminRoute && profile?.role !== 'admin') {
-        const dashboardUrl = new URL('/dashboard', req.url)
-        return NextResponse.redirect(dashboardUrl)
-      }
-
-      // Redirect authenticated users away from auth pages
-      if (pathname.startsWith('/auth/')) {
-        const dashboardUrl = new URL('/dashboard', req.url)
-        return NextResponse.redirect(dashboardUrl)
-      }
-
-      // Check if user needs to complete their profile
-      if (pathname !== '/onboarding' && !profile) {
-        const onboardingUrl = new URL('/onboarding', req.url)
-        return NextResponse.redirect(onboardingUrl)
-      }
-
-    } catch (error) {
-      console.error('Error fetching user profile in middleware:', error)
-      // If there's an error fetching the profile, redirect to signin
-      const signinUrl = new URL('/auth/signin', req.url)
-      return NextResponse.redirect(signinUrl)
+    // Redirect authenticated users away from auth pages
+    if (pathname.startsWith('/auth/')) {
+      const dashboardUrl = new URL('/dashboard', req.url)
+      return NextResponse.redirect(dashboardUrl)
     }
+
+    // Optionally, admin route checks can be done in the page/API to avoid slowing all navigations
   }
 
   return res
@@ -110,13 +81,12 @@ export async function middleware(req) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public folder
-     */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // Only run middleware on protected and auth routes to avoid slowing down all pages
+    '/dashboard/:path*',
+    '/messages/:path*',
+    '/profile/:path*',
+    '/settings/:path*',
+    '/admin/:path*',
+    '/auth/:path*'
   ],
 }

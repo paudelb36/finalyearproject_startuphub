@@ -156,13 +156,13 @@ export async function getUserConnections(userId, filters = {}) {
       .from('connections')
       .select(`
         *,
-        requester:profiles!connections_requester_id_fkey(
+        requester:profiles!inner(
           id,
           full_name,
           avatar_url,
           role
         ),
-        target:profiles!connections_target_id_fkey(
+        target:profiles!inner(
           id,
           full_name,
           avatar_url,
@@ -178,7 +178,10 @@ export async function getUserConnections(userId, filters = {}) {
 
     const { data, error } = await query.order('created_at', { ascending: false })
     
-    if (error) throw error
+    if (error) {
+      console.error('Error getting user connections:', error?.message || error)
+      return []
+    }
 
     // Process connections to get the other user
     const processedConnections = (data || []).map(connection => {
@@ -211,13 +214,13 @@ export async function getConnectionRequests(userId, type = 'received') {
       .from('connections')
       .select(`
         *,
-        requester:profiles!connections_requester_id_fkey(
+        requester:profiles!inner(
           id,
           full_name,
           avatar_url,
           role
         ),
-        target:profiles!connections_target_id_fkey(
+        target:profiles!inner(
           id,
           full_name,
           avatar_url,
@@ -262,8 +265,8 @@ export async function getConnectionStats(userId) {
         .from('connections')
         .select(`
           id,
-          target:profiles!connections_target_id_fkey(role),
-          requester:profiles!connections_requester_id_fkey(role)
+          target:profiles!inner(role),
+          requester:profiles!inner(role)
         `)
         .or(`requester_id.eq.${userId},target_id.eq.${userId}`)
         .eq('status', 'accepted'),
@@ -273,8 +276,8 @@ export async function getConnectionStats(userId) {
         .from('connections')
         .select(`
           id,
-          target:profiles!connections_target_id_fkey(role),
-          requester:profiles!connections_requester_id_fkey(role)
+          target:profiles!inner(role),
+          requester:profiles!inner(role)
         `)
         .or(`requester_id.eq.${userId},target_id.eq.${userId}`)
         .eq('status', 'accepted')

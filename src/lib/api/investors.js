@@ -12,7 +12,7 @@ export async function getInvestors(filters = {}) {
       .from('investor_profiles')
       .select(`
         *,
-        profiles!investor_profiles_user_id_fkey(
+        profiles!inner(
           id,
           email,
           full_name,
@@ -78,7 +78,7 @@ export async function getInvestorById(investorId) {
       .from('investor_profiles')
       .select(`
         *,
-        profiles!investor_profiles_user_id_fkey(
+        profiles!inner(
           id,
           email,
           full_name,
@@ -289,13 +289,11 @@ export async function getInvestmentInquiries(investorId, status = null) {
       .from('connections')
       .select(`
         *,
-        target:startup_profiles!connections_target_id_fkey(
-          id,
+        target:startup_profiles!inner(
           company_name,
-          tagline,
           logo_url,
           stage,
-          industry
+          funding_raised
         )
       `)
       .eq('requester_id', investorId)
@@ -380,14 +378,10 @@ export async function getPitchEventApplications(eventId) {
       .from('event_registrations')
       .select(`
         *,
-        startup:startup_profiles!event_registrations_startup_id_fkey(
-          id,
+        startup:startup_profiles!inner(
           company_name,
-          tagline,
           logo_url,
-          stage,
-          industry,
-          pitch_deck_url
+          stage
         )
       `)
       .eq('event_id', eventId)
@@ -423,8 +417,10 @@ export async function reviewPitchApplication(applicationId, status, feedback = '
       .from('event_registrations')
       .select(`
         *,
-        event:events!event_registrations_event_id_fkey(
-          organizer_id
+        event:events!inner(
+          title,
+          start_date,
+          event_type
         )
       `)
       .eq('id', applicationId)
@@ -554,7 +550,7 @@ export async function searchInvestors(searchParams) {
       .from('investor_profiles')
       .select(`
         *,
-        profiles!investor_profiles_user_id_fkey(
+        profiles!inner(
           id,
           full_name,
           avatar_url
@@ -643,7 +639,7 @@ export async function getRecommendedStartups(investorId, limit = 10) {
       .from('startup_profiles')
       .select(`
         *,
-        profiles!startup_profiles_user_id_fkey(
+        profiles!inner(
           id,
           full_name,
           avatar_url
