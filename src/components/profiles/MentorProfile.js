@@ -176,7 +176,7 @@ export default function MentorProfile({ profile, mentorProfile, isOwnProfile = f
         <div className="flex items-center space-x-4">
           <div className="relative">
             <Image
-              src={profile?.avatar_url || '/default-avatar.png'}
+              src={profile?.avatar_url || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="100%" height="100%" fill="%23e5e7eb"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="32" fill="%236b7280">👤</text></svg>'}
               alt={profile?.full_name}
               width={80}
               height={80}
@@ -328,19 +328,19 @@ export default function MentorProfile({ profile, mentorProfile, isOwnProfile = f
                 <div className="flex justify-between">
                   <span className="text-gray-600">Current Role:</span>
                   <span className="text-gray-900 font-medium">
-                    {mentorProfile?.current_role || 'Not specified'}
+                    {mentorProfile?.job_title || mentorProfile?.current_role || 'Not specified'}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Company:</span>
                   <span className="text-gray-900 font-medium">
-                    {mentorProfile?.current_company || 'Not specified'}
+                    {mentorProfile?.company || mentorProfile?.current_company || 'Not specified'}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Industry Focus:</span>
+                  <span className="text-gray-600">Industry:</span>
                   <span className="text-gray-900 font-medium">
-                    {mentorProfile?.industry_focus || 'Not specified'}
+                    {mentorProfile?.industry || mentorProfile?.industry_focus || 'Not specified'}
                   </span>
                 </div>
               </div>
@@ -409,7 +409,7 @@ export default function MentorProfile({ profile, mentorProfile, isOwnProfile = f
               value={mentorshipMessage}
               onChange={(e) => setMentorshipMessage(e.target.value)}
               placeholder="Explain why you're seeking mentorship, your goals, and what specific areas you'd like help with..."
-              className="w-full h-32 p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              className="w-full h-32 p-3 text-black border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
             />
             <div className="flex space-x-3 mt-4">
               <button

@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import StartupProfileManager from '@/components/StartupProfileManager'
 import { toast } from 'react-hot-toast'
 
 export default function EditProfilePage() {
@@ -16,11 +17,9 @@ export default function EditProfilePage() {
   const [formData, setFormData] = useState({
     full_name: '',
     bio: '',
-    location: '',
-    website: '',
-    linkedin_url: '',
-    twitter_url: ''
+    location: ''
   })
+  const [avatarFile, setAvatarFile] = useState(null)
   // Mentor-specific state
   const [mentorProfile, setMentorProfile] = useState(null)
   const [mentorFormData, setMentorFormData] = useState({
@@ -79,10 +78,7 @@ export default function EditProfilePage() {
       setFormData({
         full_name: data.full_name || '',
         bio: data.bio || '',
-        location: data.location || '',
-        website: data.website || '',
-        linkedin_url: data.linkedin_url || '',
-        twitter_url: data.twitter_url || ''
+        location: data.location || ''
       })
 
       // If mentor, also load mentor profile
@@ -160,12 +156,38 @@ export default function EditProfilePage() {
     setSaving(true)
 
     try {
+      // Update general profile data
+      let avatar_url = profile?.avatar_url || null
+
+      // Upload avatar if provided (use an existing bucket)
+      if (avatarFile) {
+        const fileExt = avatarFile.name.split('.').pop()
+        const fileName = `${user.id}-${Date.now()}.${fileExt}`
+        const filePath = `avatars/${fileName}`
+        const { error: uploadError } = await supabase.storage
+          .from('pitch-decks')
+          .upload(filePath, avatarFile)
+        if (uploadError) throw uploadError
+        const { data: publicData } = await supabase.storage
+          .from('pitch-decks')
+          .getPublicUrl(filePath)
+        avatar_url = publicData?.publicUrl || avatar_url
+      }
+
       const { error: profileError } = await supabase
         .from('profiles')
-        .update(formData)
+        .update({
+          full_name: formData.full_name,
+          bio: formData.bio,
+          location: formData.location,
+          avatar_url
+        })
         .eq('id', user.id)
 
-      if (profileError) throw profileError
+      if (profileError) {
+        console.error('Profile update error:', profileError)
+        throw profileError
+      }
 
       // If mentor, upsert mentor profile data too
       if (profile?.role === 'mentor') {
@@ -270,7 +292,7 @@ export default function EditProfilePage() {
       }
 
       toast.success('Profile updated successfully!')
-      router.push('/profile')
+      router.push('/profiles')
     } catch (error) {
       console.error('Error updating profile:', error)
       console.error('Error details:', {
@@ -404,7 +426,7 @@ export default function EditProfilePage() {
             <p className="text-gray-600 mt-1">Update your basic profile information</p>
           </div>
           <Link
-            href="/profile"
+            href="/profiles"
             className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
           >
             Back to Profile
@@ -427,6 +449,16 @@ export default function EditProfilePage() {
               onChange={handleInputChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
               required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Profile Image</label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => setAvatarFile(e.target.files?.[0] || null)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
             />
           </div>
 
@@ -460,52 +492,7 @@ export default function EditProfilePage() {
             />
           </div>
 
-          <div>
-            <label htmlFor="website" className="block text-sm font-medium text-gray-700 mb-2">
-              Website
-            </label>
-            <input
-              type="url"
-              id="website"
-              name="website"
-              value={formData.website}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-              placeholder="https://yourwebsite.com"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="linkedin_url" className="block text-sm font-medium text-gray-700 mb-2">
-              LinkedIn URL
-            </label>
-            <input
-              type="url"
-              id="linkedin_url"
-              name="linkedin_url"
-              value={formData.linkedin_url}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-              placeholder="https://linkedin.com/in/yourprofile"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="twitter_url" className="block text-sm font-medium text-gray-700 mb-2">
-              Twitter URL
-            </label>
-            <input
-              type="url"
-              id="twitter_url"
-              name="twitter_url"
-              value={formData.twitter_url}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-              placeholder="https://twitter.com/yourhandle"
-            />
-          </div>
-
-          {/* Mentor-specific section */}
+          {/* Role-specific profile sections */}
           {profile?.role === 'mentor' && (
             <div className="pt-2 border-t border-gray-200">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Mentor Details</h2>
@@ -530,22 +517,22 @@ export default function EditProfilePage() {
                     onChange={(e) => setMentorFormData(prev => ({ ...prev, company: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
                     placeholder="Current company"
-                  />
-                </div>
+            />
+          </div>
 
-                <div>
+          <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Years of Experience</label>
-                  <input
+            <input
                     type="number"
                     min="0"
                     value={mentorFormData.years_experience}
                     onChange={(e) => setMentorFormData(prev => ({ ...prev, years_experience: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
                     placeholder="Years of experience"
-                  />
-                </div>
+            />
+          </div>
 
-                <div>
+          <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Availability</label>
                   <select
                     value={mentorFormData.availability}
@@ -560,14 +547,14 @@ export default function EditProfilePage() {
 
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-2">Mentor LinkedIn URL</label>
-                  <input
-                    type="url"
+            <input
+              type="url"
                     value={mentorFormData.linkedin_url}
                     onChange={(e) => setMentorFormData(prev => ({ ...prev, linkedin_url: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-                    placeholder="https://linkedin.com/in/yourprofile"
-                  />
-                </div>
+              placeholder="https://linkedin.com/in/yourprofile"
+            />
+          </div>
 
                 <div className="md:col-span-2">
                   <label className="flex items-center space-x-2">
@@ -708,16 +695,16 @@ export default function EditProfilePage() {
                   />
                 </div>
 
-                <div>
+          <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Investor LinkedIn URL</label>
-                  <input
-                    type="url"
+            <input
+              type="url"
                     value={investorFormData.linkedin_url}
                     onChange={(e) => setInvestorFormData(prev => ({ ...prev, linkedin_url: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
                     placeholder="https://linkedin.com/in/yourprofile"
-                  />
-                </div>
+            />
+          </div>
 
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-2">Website URL</label>
@@ -826,7 +813,7 @@ export default function EditProfilePage() {
               {saving ? 'Saving...' : 'Save Changes'}
             </button>
             <Link
-              href="/profile"
+              href="/profiles"
               className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors"
             >
               Cancel
@@ -834,6 +821,15 @@ export default function EditProfilePage() {
           </div>
         </form>
       </div>
+
+      {/* Startup-specific management (company + team) */}
+      {profile?.role === 'startup' && (
+        <div className="bg-white rounded-lg shadow-md p-6 mt-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Startup Profile & Team</h2>
+          <p className="text-gray-600 mb-4">Manage your company details, pitch materials and team members here.</p>
+          <StartupProfileManager />
+        </div>
+      )}
     </div>
   )
 }

@@ -23,6 +23,10 @@ export default function StartupDashboard({ profile }) {
   const [recentActivity, setRecentActivity] = useState([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
+  const [conversations, setConversations] = useState([])
+  const [messagesLoading, setMessagesLoading] = useState(false)
+  const [recs, setRecs] = useState([])
+  const [recsLoading, setRecsLoading] = useState(false)
 
   useEffect(() => {
     if (user && profile) {
@@ -37,13 +41,49 @@ export default function StartupDashboard({ profile }) {
         fetchStats(),
         fetchRequests(),
         fetchConnections(),
-        fetchRecentActivity()
+        fetchRecentActivity(),
+        fetchConversations(),
+        fetchRecommendations()
       ])
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
       toast.error('Failed to load dashboard data')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchRecommendations = async () => {
+    try {
+      setRecsLoading(true)
+      const res = await fetch(`/api/recommendations?topK=8&userId=${user?.id}&targetRole=mentor,investor`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || 'Failed to load')
+      setRecs(json.data || [])
+    } catch (e) {
+      console.error('fetchRecommendations error:', e)
+    } finally {
+      setRecsLoading(false)
+    }
+  }
+
+  const fetchConversations = async () => {
+    try {
+      setMessagesLoading(true)
+      const { data, error } = await supabase
+        .from('conversations')
+        .select(`
+          *,
+          participant1:profiles!participant1_id(id, full_name, avatar_url, role),
+          participant2:profiles!participant2_id(id, full_name, avatar_url, role)
+        `)
+        .or(`participant1_id.eq.${user.id},participant2_id.eq.${user.id}`)
+        .order('updated_at', { ascending: false })
+      if (!error) setConversations(data || [])
+    } catch (error) {
+      console.error('Error fetching conversations:', error)
+    } finally {
+      setMessagesLoading(false)
     }
   }
 
@@ -99,8 +139,8 @@ export default function StartupDashboard({ profile }) {
         .from('connections')
         .select(`
           *,
-          requester:profiles!inner(full_name),
-          target:profiles!inner(full_name)
+          requester:profiles!requester_id(full_name),
+          target:profiles!target_id(full_name)
         `)
         .or(`requester_id.eq.${user.id},target_id.eq.${user.id}`)
         .order('created_at', { ascending: false })
@@ -124,12 +164,9 @@ export default function StartupDashboard({ profile }) {
         .from('mentorship_requests')
         .select(`
           *,
-          mentor:profiles!inner(
+          mentor:profiles!mentor_id(
             id,
             full_name
-          ),
-          mentor_profile:mentor_profiles!inner(
-            user_id
           )
         `)
         .eq('startup_id', profile.roleSpecificData?.id)
@@ -151,12 +188,9 @@ export default function StartupDashboard({ profile }) {
         .from('investment_requests')
         .select(`
           *,
-          investor:profiles!inner(
+          investor:profiles!investor_id(
             id,
             full_name
-          ),
-          investor_profile:investor_profiles!inner(
-            user_id
           )
         `)
         .eq('startup_id', profile.roleSpecificData?.id)
@@ -232,9 +266,9 @@ export default function StartupDashboard({ profile }) {
                 )}
               </div>
               <div className="flex-1">
-                <h2 className="text-2xl font-bold text-gray-900">
+                <Link href="/profiles" className="text-2xl font-bold text-gray-900 hover:underline">
                   {profile?.roleSpecificData?.company_name || 'Your Startup'}
-                </h2>
+                </Link>
                 <p className="text-gray-700 mt-1">
                   {profile?.roleSpecificData?.tagline || 'Add your tagline'}
                 </p>
@@ -245,12 +279,7 @@ export default function StartupDashboard({ profile }) {
                   {profile?.roleSpecificData?.description || 'Add company description'}
                 </p>
               </div>
-              <Link
-                href="/profile/edit"
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Edit Profile
-              </Link>
+              {/* Edit button removed; name links to profile page */}
             </div>
           </div>
 
@@ -436,6 +465,83 @@ export default function StartupDashboard({ profile }) {
     </div>
   )
 
+  const renderRecommendations = () => (
+    <div className="bg-white rounded-lg shadow-sm p-6">
+      <h3 className="text-xl font-semibold text-gray-900 mb-4">Recommendations</h3>
+      {recsLoading ? (
+        <p className="text-gray-600">Loading recommendations...</p>
+      ) : recs.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {recs.map((r) => (
+            <div key={r.id} className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-12 h-12">
+                  <Image
+                    src={r.avatar_url || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="100%" height="100%" rx="24" fill="%23e5e7eb"/></svg>'}
+                    alt={r.full_name || 'User'}
+                    width={48}
+                    height={48}
+                    className="rounded-full object-cover"
+                  />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-medium text-gray-900">{r.full_name || 'User'}</h4>
+                  <p className="text-sm text-gray-700 capitalize">{r.role}</p>
+                  {r.reasons?.length > 0 && (
+                    <p className="text-xs text-gray-500 mt-1">{r.reasons[0]}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-gray-600">No recommendations yet</p>
+      )}
+    </div>
+  )
+
+
+  const renderMessages = () => (
+    <div className="bg-white rounded-lg shadow-sm p-6">
+      <h3 className="text-xl font-semibold text-gray-900 mb-4">Messages</h3>
+      {messagesLoading ? (
+        <p className="text-gray-600">Loading conversations...</p>
+      ) : conversations.length > 0 ? (
+        <div className="divide-y divide-gray-200">
+          {conversations.map((conv) => {
+            const other = conv.participant1_id === user.id ? conv.participant2 : conv.participant1
+            return (
+              <Link key={conv.id} href={`/messages?user=${other?.id}`} className="flex items-center py-3 hover:bg-gray-50 px-2 rounded">
+                <div className="w-10 h-10 mr-3">
+                  <Image
+                    src={other?.avatar_url || 'data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"40\"><rect width=\"100%\" height=\"100%\" rx=\"20\" fill=\"%23e5e7eb\"/></svg>'}
+                    alt={other?.full_name || 'User'}
+                    width={40}
+                    height={40}
+                    className="rounded-full object-cover"
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-gray-900 font-medium truncate">{other?.full_name || 'User'}</p>
+                  <p className="text-sm text-gray-600 truncate">{conv.last_message || 'Open conversation'}</p>
+                </div>
+                <span className="text-xs text-gray-500 ml-3">
+                  {new Date(conv.updated_at || conv.created_at).toLocaleDateString()}
+                </span>
+              </Link>
+            )
+          })}
+        </div>
+      ) : (
+        <p className="text-gray-600">No conversations yet</p>
+      )}
+      <div className="mt-4">
+        <Link href="/messages" className="text-blue-600 hover:text-blue-800">Open Messages</Link>
+      </div>
+    </div>
+  )
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -452,7 +558,9 @@ export default function StartupDashboard({ profile }) {
           {[
             { id: 'overview', name: 'Overview' },
             { id: 'requests', name: 'Requests' },
-            { id: 'connections', name: 'Connections' }
+            { id: 'connections', name: 'Connections' },
+            { id: 'messages', name: 'Messages' },
+            { id: 'recommendations', name: 'Recommendations' }
           ].map((tab) => (
             <button
               key={tab.id}
@@ -473,6 +581,8 @@ export default function StartupDashboard({ profile }) {
       {activeTab === 'overview' && renderOverview()}
       {activeTab === 'requests' && renderRequests()}
       {activeTab === 'connections' && renderConnections()}
+      {activeTab === 'messages' && renderMessages()}
+      {activeTab === 'recommendations' && renderRecommendations()}
     </div>
   )
 }

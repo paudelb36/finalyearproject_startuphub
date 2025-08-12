@@ -72,10 +72,16 @@ export const AuthProvider = ({ children }) => {
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single()
+        .maybeSingle()
 
       if (error) {
         console.error('Error fetching profile:', error)
+        return
+      }
+
+      if (!data) {
+        // No profile row yet; keep profile null and let pages handle setup flow
+        setProfile(null)
         return
       }
 

@@ -49,7 +49,7 @@ export async function sendMentorshipRequest(mentorId, message) {
       .select('id, status')
       .eq('startup_id', user.id)
       .eq('mentor_id', mentorId)
-      .single()
+      .maybeSingle()
 
     if (existing) {
       if (existing.status === 'pending') {
@@ -69,7 +69,7 @@ export async function sendMentorshipRequest(mentorId, message) {
         status: 'pending'
       })
       .select()
-      .single()
+      .maybeSingle()
 
     if (error) {
       console.error('Error creating mentorship request:', error)
@@ -132,7 +132,7 @@ export async function sendInvestmentRequest(investorId, message, pitchDeckUrl = 
       .select('id, status')
       .eq('startup_id', user.id)
       .eq('investor_id', investorId)
-      .single()
+      .maybeSingle()
 
     if (existing) {
       if (existing.status === 'pending') {
@@ -153,7 +153,7 @@ export async function sendInvestmentRequest(investorId, message, pitchDeckUrl = 
         status: 'pending'
       })
       .select()
-      .single()
+      .maybeSingle()
 
     if (error) {
       console.error('Error creating investment request:', error)
@@ -370,10 +370,8 @@ export async function getMentorshipRequests(userId, type = 'received', status = 
       .from('mentorship_requests')
       .select(`
         *,
-        startup:profiles!inner(id, full_name, avatar_url),
-        mentor:profiles!inner(id, full_name, avatar_url),
-        startup_profile:startup_profiles!inner(company_name, logo_url),
-        mentor_profile:mentor_profiles!inner(expertise_tags, hourly_rate)
+        startup:profiles!startup_id(id, full_name, avatar_url),
+        mentor:profiles!mentor_id(id, full_name, avatar_url)
       `)
 
     if (type === 'sent') {
@@ -420,10 +418,8 @@ export async function getInvestmentRequests(userId, type = 'received', status = 
       .from('investment_requests')
       .select(`
         *,
-        startup:profiles!inner(id, full_name, avatar_url),
-        investor:profiles!inner(id, full_name, avatar_url),
-        startup_profile:startup_profiles!inner(company_name, logo_url, stage, funding_raised),
-        investor_profile:investor_profiles!inner(fund_name, ticket_size_min, ticket_size_max)
+        startup:profiles!startup_id(id, full_name, avatar_url),
+        investor:profiles!investor_id(id, full_name, avatar_url)
       `)
 
     if (type === 'sent') {

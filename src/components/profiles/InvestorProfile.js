@@ -212,7 +212,7 @@ export default function InvestorProfile({ profile, investorProfile, isOwnProfile
         <div className="flex items-center space-x-4">
           <div className="relative">
             <Image
-              src={investorProfile?.logo_url || profile?.avatar_url || '/default-avatar.png'}
+              src={investorProfile?.logo_url || profile?.avatar_url || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="100%" height="100%" fill="%23e5e7eb"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="32" fill="%236b7280">👤</text></svg>'}
               alt={investorProfile?.fund_name || profile?.full_name}
               width={80}
               height={80}
@@ -460,7 +460,7 @@ export default function InvestorProfile({ profile, investorProfile, isOwnProfile
                 value={investmentMessage}
                 onChange={(e) => setInvestmentMessage(e.target.value)}
                 placeholder="Describe your investment opportunity, traction, and why this investor is a good fit..."
-                className="w-full h-32 p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                className="w-full h-32 p-3 text-black border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               />
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">

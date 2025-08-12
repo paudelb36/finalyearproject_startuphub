@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth'
 import Link from 'next/link'
 import Image from 'next/image'
 import { toast } from 'react-hot-toast'
+import { registerForEvent } from '@/lib/api/eventRegistration'
 
 export default function ExplorePage() {
   const { user, loading: authLoading } = useAuth()
@@ -56,7 +57,10 @@ export default function ExplorePage() {
       .order('created_at', { ascending: false })
       .limit(20)
 
-    if (error) throw error
+    if (error) {
+      console.error('fetchStartups error:', error)
+      throw error
+    }
     setStartups(data || [])
   }
 
@@ -70,7 +74,10 @@ export default function ExplorePage() {
       .order('created_at', { ascending: false })
       .limit(20)
 
-    if (error) throw error
+    if (error) {
+      console.error('fetchMentors error:', error)
+      throw error
+    }
     setMentors(data || [])
   }
 
@@ -84,7 +91,10 @@ export default function ExplorePage() {
       .order('created_at', { ascending: false })
       .limit(20)
 
-    if (error) throw error
+    if (error) {
+      console.error('fetchInvestors error:', error)
+      throw error
+    }
     setInvestors(data || [])
   }
 
@@ -92,12 +102,13 @@ export default function ExplorePage() {
     const { data, error } = await supabase
       .from('events')
       .select('*')
-      .eq('status', 'published')
-      .gte('start_date', new Date().toISOString())
       .order('start_date', { ascending: true })
       .limit(20)
 
-    if (error) throw error
+    if (error) {
+      console.error('fetchEvents error:', error)
+      throw error
+    }
     setEvents(data || [])
   }
 
@@ -318,6 +329,25 @@ export default function ExplorePage() {
                     <span>🎯</span>
                     <span className="capitalize">{event.event_type}</span>
                   </div>
+                </div>
+                <div className="mt-4">
+                  <button
+                    onClick={async () => {
+                      if (!user) {
+                        toast.error('Please sign in to register')
+                        return
+                      }
+                      const res = await registerForEvent(event.id)
+                      if (res?.error) {
+                        toast.error(res.error)
+                      } else {
+                        toast.success('Registered for event')
+                      }
+                    }}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                  >
+                    Register
+                  </button>
                 </div>
               </div>
             ))}

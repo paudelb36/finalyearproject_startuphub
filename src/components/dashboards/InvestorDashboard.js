@@ -23,6 +23,8 @@ export default function InvestorDashboard({ profile }) {
   const [recentActivity, setRecentActivity] = useState([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
+  const [recs, setRecs] = useState([])
+  const [recsLoading, setRecsLoading] = useState(false)
   const [respondingTo, setRespondingTo] = useState(null)
   const [responseMessage, setResponseMessage] = useState('')
 
@@ -39,13 +41,28 @@ export default function InvestorDashboard({ profile }) {
         fetchStats(),
         fetchInvestmentRequests(),
         fetchConnections(),
-        fetchRecentActivity()
+        fetchRecentActivity(),
+        fetchRecommendations()
       ])
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
       toast.error('Failed to load dashboard data')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchRecommendations = async () => {
+    try {
+      setRecsLoading(true)
+      const res = await fetch(`/api/recommendations?topK=8&targetRole=startup`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || 'Failed to load')
+      setRecs(json.data || [])
+    } catch (e) {
+      console.error('fetchRecommendations error:', e)
+    } finally {
+      setRecsLoading(false)
     }
   }
 
@@ -57,7 +74,7 @@ export default function InvestorDashboard({ profile }) {
       const { data: investmentStats } = await supabase
         .from('investment_requests')
         .select('status')
-        .eq('investor_id', profile.roleSpecificData?.id)
+        .eq('investor_id', user.id)
 
       const pendingRequests = investmentStats?.filter(req => req.status === 'pending').length || 0
       const activeInvestments = investmentStats?.filter(req => req.status === 'accepted').length || 0
@@ -106,8 +123,8 @@ export default function InvestorDashboard({ profile }) {
         .from('connections')
         .select(`
           *,
-          requester:profiles!inner(full_name),
-          target:profiles!inner(full_name)
+          requester:profiles!requester_id(full_name),
+          target:profiles!target_id(full_name)
         `)
         .or(`requester_id.eq.${user.id},target_id.eq.${user.id}`)
         .order('created_at', { ascending: false })
@@ -131,16 +148,12 @@ export default function InvestorDashboard({ profile }) {
         .from('investment_requests')
         .select(`
           *,
-          startup:profiles!inner(
+          startup:profiles!startup_id(
             id,
             full_name
-          ),
-          startup_profile:startup_profiles!inner(
-            user_id,
-            company_name
           )
         `)
-        .eq('investor_id', profile.roleSpecificData?.id)
+        .eq('investor_id', user.id)
         .order('created_at', { ascending: false })
         .limit(5)
 
@@ -212,25 +225,19 @@ export default function InvestorDashboard({ profile }) {
           {/* Investor Profile Card */}
           <div className="bg-white rounded-lg shadow-sm p-6">
             <div className="flex items-start space-x-4">
-              <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center">
-                {profile?.avatar_url ? (
-                  <Image
-                    src={profile.avatar_url}
-                    alt={profile.full_name}
-                    width={64}
-                    height={64}
-                    className="rounded-full"
-                  />
-                ) : (
-                  <span className="text-2xl font-semibold text-gray-600">
-                    {profile?.full_name?.charAt(0).toUpperCase()}
-                  </span>
-                )}
+              <div className="w-16 h-16">
+                <Image
+                  src={profile?.avatar_url || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="100%" height="100%" rx="32" fill="%23e5e7eb"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="28" fill="%236b7280">👤</text></svg>'}
+                  alt={profile?.full_name || 'Avatar'}
+                  width={64}
+                  height={64}
+                  className="rounded-full object-cover"
+                />
               </div>
               <div className="flex-1">
-                <h2 className="text-2xl font-bold text-gray-900">
+                <Link href="/profiles" className="text-2xl font-bold text-gray-900 hover:underline">
                   {profile?.full_name || 'Your Name'}
-                </h2>
+                </Link>
                 <p className="text-gray-700 mt-1">
                   {profile?.roleSpecificData?.investment_focus || 'Add your investment focus'}
                 </p>
@@ -238,7 +245,7 @@ export default function InvestorDashboard({ profile }) {
                   {profile?.roleSpecificData?.fund_name || 'Add fund name'}
                 </p>
                 <p className="text-gray-600 text-sm">
-                  {profile?.roleSpecificData?.location || 'Add location'}
+                  {profile?.location || 'Add location'}
                 </p>
                 {profile?.roleSpecificData?.min_investment && profile?.roleSpecificData?.max_investment && (
                   <p className="text-green-600 font-semibold mt-2">
@@ -249,12 +256,7 @@ export default function InvestorDashboard({ profile }) {
                   {profile?.bio || 'Add your bio'}
                 </p>
               </div>
-              <Link
-                href="/profile/edit"
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Edit Profile
-              </Link>
+              {/* Edit button removed; name links to profile page */}
             </div>
           </div>
 
@@ -479,6 +481,42 @@ export default function InvestorDashboard({ profile }) {
     </div>
   )
 
+  const renderRecommendations = () => (
+    <div className="bg-white rounded-lg shadow-sm p-6">
+      <h3 className="text-xl font-semibold text-gray-900 mb-4">Recommendations</h3>
+      {recsLoading ? (
+        <p className="text-gray-600">Loading recommendations...</p>
+      ) : recs.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {recs.map((r) => (
+            <div key={r.id} className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-12 h-12">
+                  <Image
+                    src={r.avatar_url || 'data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"48\" height=\"48\"><rect width=\"100%\" height=\"100%\" rx=\"24\" fill=\"%23e5e7eb\"/></svg>'}
+                    alt={r.full_name || 'User'}
+                    width={48}
+                    height={48}
+                    className="rounded-full object-cover"
+                  />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-medium text-gray-900">{r.full_name || 'User'}</h4>
+                  <p className="text-sm text-gray-700 capitalize">{r.role}</p>
+                  {r.reasons?.length > 0 && (
+                    <p className="text-xs text-gray-500 mt-1">{r.reasons[0]}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-gray-600">No recommendations yet</p>
+      )}
+    </div>
+  )
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -496,7 +534,8 @@ export default function InvestorDashboard({ profile }) {
             { id: 'overview', name: 'Overview' },
             { id: 'requests', name: 'Investment Requests' },
             { id: 'portfolio', name: 'Portfolio' },
-            { id: 'connections', name: 'Connections' }
+            { id: 'connections', name: 'Connections' },
+            { id: 'recommendations', name: 'Recommendations' }
           ].map((tab) => (
             <button
               key={tab.id}
@@ -518,6 +557,7 @@ export default function InvestorDashboard({ profile }) {
       {activeTab === 'requests' && renderInvestmentRequests()}
       {activeTab === 'portfolio' && renderPortfolio()}
       {activeTab === 'connections' && renderConnections()}
+      {activeTab === 'recommendations' && renderRecommendations()}
 
       {/* Response Modal */}
       {respondingTo && (

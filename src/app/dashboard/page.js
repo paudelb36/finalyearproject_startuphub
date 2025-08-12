@@ -31,11 +31,16 @@ export default function DashboardPage() {
           .from('profiles')
           .select('*')
           .eq('id', user.id)
-          .single()
+          .maybeSingle()
 
         if (profileError) {
           console.error('Error fetching profile:', profileError)
           toast.error('Failed to load profile')
+          return
+        }
+        if (!data) {
+          setProfile(null)
+          setLoading(false)
           return
         }
         profileData = data

@@ -62,8 +62,8 @@ export default function ProfilePage() {
       {/* Header */}
       <div className="bg-white  p-4">
         <div className="flex items-center justify-between">
-          <Link
-            href="/dashboard"
+           <Link
+             href="/dashboard"
             className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
           >
             Back to Dashboard
@@ -78,7 +78,7 @@ export default function ProfilePage() {
             <h2 className="text-xl font-bold text-gray-900">Startup Profile Management</h2>
             <p className="text-gray-600 mt-1">Manage your startup information, team, and pitch materials</p>
           </div>
-          <StartupProfileManager />
+           <StartupProfileManager />
         </div>
       ) : profile?.role === 'mentor' ? (
         <div className="bg-white rounded-lg shadow-md">
@@ -86,7 +86,7 @@ export default function ProfilePage() {
             <h2 className="text-xl font-bold text-gray-900">Mentor Profile Management</h2>
             <p className="text-gray-600 mt-1">Manage your mentorship information, expertise, and availability</p>
           </div>
-          <MentorProfileManager />
+           <MentorProfileManager />
         </div>
       ) : profile?.role === 'investor' ? (
         <div className="bg-white rounded-lg shadow-md">
@@ -94,7 +94,7 @@ export default function ProfilePage() {
             <h2 className="text-xl font-bold text-gray-900">Investor Profile Management</h2>
             <p className="text-gray-600 mt-1">Manage your investment preferences, fund information, and portfolio</p>
           </div>
-          <InvestorProfileManager />
+           <InvestorProfileManager />
         </div>
       ) : (
         <div className="bg-white rounded-lg shadow-md p-6">
@@ -104,7 +104,7 @@ export default function ProfilePage() {
           </p>
           <div className="mt-6">
             <Link
-              href="/profile/edit"
+              href="/profiles/edit"
               className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
             >
               Edit Basic Profile

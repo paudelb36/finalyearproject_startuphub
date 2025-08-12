@@ -232,7 +232,7 @@ export default function StartupProfile({ profile, startupProfile, isOwnProfile =
         <div className="flex items-center space-x-4">
           <div className="relative">
             <Image
-              src={startupProfile?.logo_url || profile?.avatar_url || '/default-avatar.png'}
+              src={startupProfile?.logo_url || profile?.avatar_url || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="100%" height="100%" fill="%23e5e7eb"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="32" fill="%236b7280">🏢</text></svg>'}
               alt={startupProfile?.company_name || profile?.full_name}
               width={80}
               height={80}
