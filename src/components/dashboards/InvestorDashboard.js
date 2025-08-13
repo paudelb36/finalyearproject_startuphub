@@ -55,7 +55,7 @@ export default function InvestorDashboard({ profile }) {
   const fetchRecommendations = async () => {
     try {
       setRecsLoading(true)
-      const res = await fetch(`/api/recommendations?topK=8&targetRole=startup`)
+      const res = await fetch(`/api/recommendations?topK=8&targetRole=startup&userId=${user?.id}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error || 'Failed to load')
       setRecs(json.data || [])
