@@ -1,14 +1,17 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useStore, useLoadingState } from '@/lib/store'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import Image from 'next/image'
 import { toast } from 'react-hot-toast'
+import { StartupCardSkeleton } from '@/components/ui/LoadingSkeleton'
 
 export default function StartupsPage() {
+  const getStartups = useStore((state) => state.getStartups)
   const [startups, setStartups] = useState([])
-  const [loading, setLoading] = useState(true)
+  const { loading } = useLoadingState('startups', 'all')
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedIndustry, setSelectedIndustry] = useState('')
   const [selectedStage, setSelectedStage] = useState('')
@@ -29,39 +32,35 @@ export default function StartupsPage() {
 
   const fetchStartups = async () => {
     try {
-      setLoading(true)
-      let query = supabase
-        .from('startup_profiles')
-        .select(`
-          *,
-          profiles!startup_profiles_user_id_fkey(
-            full_name,
-            avatar_url
-          )
-        `)
-        .eq('is_public', true)
+      const allStartups = await getStartups()
+      let filteredStartups = allStartups || []
 
+      // Apply client-side filtering
       if (searchTerm) {
-        query = query.or(`company_name.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`)
+        const searchLower = searchTerm.toLowerCase()
+        filteredStartups = filteredStartups.filter(startup => 
+          startup.company_name?.toLowerCase().includes(searchLower) ||
+          startup.description?.toLowerCase().includes(searchLower)
+        )
       }
 
       if (selectedIndustry) {
-        query = query.eq('industry', selectedIndustry)
+        filteredStartups = filteredStartups.filter(startup => 
+          startup.industry === selectedIndustry
+        )
       }
 
       if (selectedStage) {
-        query = query.eq('funding_stage', selectedStage)
+        filteredStartups = filteredStartups.filter(startup => 
+          startup.funding_stage === selectedStage
+        )
       }
 
-      const { data, error } = await query.order('created_at', { ascending: false })
-
-      if (error) throw error
-      setStartups(data || [])
+      setStartups(filteredStartups)
     } catch (error) {
       console.error('Error fetching startups:', error)
       toast.error('Failed to load startups')
-    } finally {
-      setLoading(false)
+      setStartups([])
     }
   }
 
@@ -154,8 +153,10 @@ export default function StartupsPage() {
 
       {/* Results */}
       {loading ? (
-        <div className="flex justify-center items-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {Array.from({ length: 6 }, (_, i) => (
+            <StartupCardSkeleton key={i} />
+          ))}
         </div>
       ) : (
         <>

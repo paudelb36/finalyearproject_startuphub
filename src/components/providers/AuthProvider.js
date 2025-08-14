@@ -24,19 +24,40 @@ export const AuthProvider = ({ children }) => {
     // Get initial session
     const getInitialSession = async () => {
       try {
+        // Check localStorage for cached user (non-blocking)
+        const cachedUser = localStorage.getItem('supabase.auth.user')
+        if (cachedUser) {
+          try {
+            const parsedUser = JSON.parse(cachedUser)
+            setUser(parsedUser)
+            // Don't set loading to false yet, still need to verify session
+          } catch (e) {
+            localStorage.removeItem('supabase.auth.user')
+          }
+        }
+        
         const { data: { session }, error } = await supabase.auth.getSession()
         
         if (error) {
           console.error('Error getting session:', error)
+          localStorage.removeItem('supabase.auth.user')
+          setUser(null)
+          setLoading(false)
           return
         }
 
         if (session?.user) {
           setUser(session.user)
+          localStorage.setItem('supabase.auth.user', JSON.stringify(session.user))
           await fetchUserProfile(session.user.id)
+        } else {
+          setUser(null)
+          localStorage.removeItem('supabase.auth.user')
         }
       } catch (error) {
         console.error('Error in getInitialSession:', error)
+        localStorage.removeItem('supabase.auth.user')
+        setUser(null)
       } finally {
         setLoading(false)
       }
@@ -51,10 +72,12 @@ export const AuthProvider = ({ children }) => {
         
         if (session?.user) {
           setUser(session.user)
+          localStorage.setItem('supabase.auth.user', JSON.stringify(session.user))
           await fetchUserProfile(session.user.id)
         } else {
           setUser(null)
           setProfile(null)
+          localStorage.removeItem('supabase.auth.user')
         }
         
         setLoading(false)

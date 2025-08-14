@@ -143,30 +143,90 @@ export async function GET(request) {
       })
     }
 
-    // 4) Attribute-based fallback re-ranking — boosts by shared industry/stage/location/slug prefix
+    // 4) Enhanced attribute fetching for current user
     // Fetch current user's role-specific attributes to compute similarity when graph is sparse
-    let currentAttrs = { industry: null, stage: null, location: null, slug: null }
+    let currentAttrs = { 
+      industry: null, 
+      stage: null, 
+      location: null, 
+      slug: null, 
+      sectors: [], 
+      investment_stages: [], 
+      geographic_focus: [],
+      expertise_tags: []
+    }
+    
     if (currentUserRole === 'startup') {
       const { data: s } = await supabase
         .from('startup_profiles')
-        .select('industry, stage, location, slug')
+        .select('industry, stage, location, slug, funding_stage')
         .eq('user_id', currentUserId)
         .maybeSingle()
-      if (s) currentAttrs = { industry: s.industry, stage: s.stage, location: s.location, slug: s.slug }
+      if (s) {
+        currentAttrs = { 
+          industry: s.industry, 
+          stage: s.stage, 
+          location: s.location, 
+          slug: s.slug,
+          funding_stage: s.funding_stage,
+          sectors: s.industry ? [s.industry] : [],
+          investment_stages: s.funding_stage ? [s.funding_stage] : [],
+          geographic_focus: s.location ? [s.location] : [],
+          expertise_tags: []
+        }
+      }
     } else if (currentUserRole === 'mentor') {
       const { data: m } = await supabase
         .from('mentor_profiles')
-        .select('industry_focus:industry, location')
+        .select('expertise_tags, years_experience, availability')
         .eq('user_id', currentUserId)
         .maybeSingle()
-      if (m) currentAttrs = { industry: m.industry_focus, stage: null, location: m.location, slug: null }
+      
+      // Also get location from profiles table
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('location')
+        .eq('id', currentUserId)
+        .maybeSingle()
+        
+      if (m) {
+        currentAttrs = { 
+          industry: m.expertise_tags?.[0] || null, 
+          stage: null, 
+          location: profile?.location || null, 
+          slug: null,
+          sectors: m.expertise_tags || [],
+          investment_stages: [],
+          geographic_focus: profile?.location ? [profile.location] : [],
+          expertise_tags: m.expertise_tags || []
+        }
+      }
     } else if (currentUserRole === 'investor') {
       const { data: i } = await supabase
         .from('investor_profiles')
-        .select('industry_focus:industry, location')
+        .select('sectors, investment_stage, geographic_focus')
         .eq('user_id', currentUserId)
         .maybeSingle()
-      if (i) currentAttrs = { industry: i.industry_focus, stage: null, location: i.location, slug: null }
+        
+      // Also get location from profiles table
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('location')
+        .eq('id', currentUserId)
+        .maybeSingle()
+        
+      if (i) {
+        currentAttrs = { 
+          industry: i.sectors?.[0] || null, 
+          stage: i.investment_stage?.[0] || null, 
+          location: profile?.location || null, 
+          slug: null,
+          sectors: i.sectors || [],
+          investment_stages: i.investment_stage || [],
+          geographic_focus: i.geographic_focus || [],
+          expertise_tags: []
+        }
+      }
     }
 
     const slugPrefix = (s) => (typeof s === 'string' ? s.split('-')[0] : null)
@@ -187,63 +247,164 @@ export async function GET(request) {
       if (final.length >= topK) break
     }
 
-    // If not enough results, add attribute-similar candidates
+    // Enhanced attribute-based recommendations - always run this for better results
     if (final.length < topK) {
-      // Fetch candidate profiles by role
+      // Fetch candidate profiles by role with more comprehensive data
       const { data: candidates } = await supabase
         .from('profiles')
-        .select('id, role, full_name, avatar_url')
+        .select('id, role, full_name, avatar_url, location')
         .in('role', targetRoles)
         .neq('id', currentUserId)
-        .limit(200)
+        .limit(300)
 
       const candidateIds = (candidates || []).map((c) => c.id)
 
-      // Join role tables to get attributes
+      // Enhanced attribute fetching with better field mapping
       let attrRows = []
+      
+      // Startup profiles with comprehensive attributes
       if (targetRoles.includes('startup') && candidateIds.length) {
         const { data } = await supabase
           .from('startup_profiles')
-          .select('user_id, industry, stage, location, slug')
+          .select('user_id, industry, stage, location, slug, funding_stage, employee_count')
           .in('user_id', candidateIds)
-        attrRows = [...attrRows, ...(data || [])]
+        attrRows = [...attrRows, ...(data || []).map(d => ({
+          ...d,
+          profile_type: 'startup',
+          sectors: d.industry ? [d.industry] : [],
+          investment_stages: d.funding_stage ? [d.funding_stage] : []
+        }))]
       }
+      
+      // Mentor profiles with expertise tags
       if (targetRoles.includes('mentor') && candidateIds.length) {
         const { data } = await supabase
           .from('mentor_profiles')
-          .select('user_id, industry:industry_focus, stage:null, location, slug:null')
+          .select('user_id, expertise_tags, years_experience, availability, company, job_title')
           .in('user_id', candidateIds)
-        attrRows = [...attrRows, ...(data || [])]
+        attrRows = [...attrRows, ...(data || []).map(d => ({
+          ...d,
+          profile_type: 'mentor',
+          industry: d.expertise_tags?.[0] || null,
+          sectors: d.expertise_tags || [],
+          stage: null,
+          slug: null
+        }))]
       }
+      
+      // Investor profiles with investment preferences
       if (targetRoles.includes('investor') && candidateIds.length) {
         const { data } = await supabase
           .from('investor_profiles')
-          .select('user_id, industry:industry_focus, stage:null, location, slug:null')
+          .select('user_id, sectors, investment_stage, geographic_focus, fund_name, ticket_size_min, ticket_size_max')
           .in('user_id', candidateIds)
-        attrRows = [...attrRows, ...(data || [])]
+        attrRows = [...attrRows, ...(data || []).map(d => ({
+          ...d,
+          profile_type: 'investor',
+          industry: d.sectors?.[0] || null,
+          stage: d.investment_stage?.[0] || null,
+          slug: null,
+          investment_stages: d.investment_stage || [],
+          location: d.geographic_focus?.[0] || null
+        }))]
       }
 
       const attrsByUser = new Map(attrRows.map((r) => [r.user_id, r]))
+      const candidatesByUser = new Map((candidates || []).map((c) => [c.id, c]))
 
       const seen = new Set(final.map((x) => x.id))
       const scored = []
+      
       for (const c of candidates || []) {
         if (seen.has(c.id)) continue
         const a = attrsByUser.get(c.id) || {}
         let score = 0
         const reasons = []
-        if (currentAttrs.industry && a.industry && currentAttrs.industry === a.industry) {
-          score += 3; reasons.push(`Same industry: ${a.industry}`)
+        
+        // Enhanced matching logic based on user role
+        if (currentUserRole === 'startup') {
+          // For startups, recommend mentors and investors
+          if (c.role === 'mentor') {
+            // Match by industry expertise
+            if (currentAttrs.industry && a.sectors?.includes(currentAttrs.industry)) {
+              score += 4; reasons.push(`Expertise in ${currentAttrs.industry}`)
+            }
+            // Match by location
+            if (currentAttrs.location && (a.location === currentAttrs.location || c.location === currentAttrs.location)) {
+              score += 2; reasons.push(`Same location: ${currentAttrs.location}`)
+            }
+            // Available mentors get priority
+            if (a.availability === 'available') {
+              score += 1; reasons.push('Currently available')
+            }
+            // Experience bonus
+            if (a.years_experience >= 10) {
+              score += 1; reasons.push('Highly experienced')
+            }
+          } else if (c.role === 'investor') {
+            // Match by investment stage
+            if (currentAttrs.stage && a.investment_stages?.includes(currentAttrs.stage)) {
+              score += 4; reasons.push(`Invests in ${currentAttrs.stage} stage`)
+            }
+            // Match by industry/sector
+            if (currentAttrs.industry && a.sectors?.includes(currentAttrs.industry)) {
+              score += 3; reasons.push(`Invests in ${currentAttrs.industry}`)
+            }
+            // Geographic focus
+            if (currentAttrs.location && a.geographic_focus?.includes(currentAttrs.location)) {
+              score += 2; reasons.push(`Focuses on ${currentAttrs.location} region`)
+            }
+          }
+        } else if (currentUserRole === 'mentor') {
+          // For mentors, recommend startups
+          if (c.role === 'startup') {
+            // Match by industry expertise
+            if (currentAttrs.industry && a.industry === currentAttrs.industry) {
+              score += 4; reasons.push(`Same industry: ${a.industry}`)
+            }
+            // Match by location
+            if (currentAttrs.location && a.location === currentAttrs.location) {
+              score += 2; reasons.push(`Same location: ${a.location}`)
+            }
+            // Stage preference (early stage gets priority)
+            if (a.stage && ['idea', 'mvp', 'early_revenue'].includes(a.stage)) {
+              score += 1; reasons.push('Early stage startup')
+            }
+          }
+        } else if (currentUserRole === 'investor') {
+          // For investors, recommend startups
+          if (c.role === 'startup') {
+            // Match by investment stage preference
+            if (currentAttrs.investment_stages?.includes(a.funding_stage)) {
+              score += 4; reasons.push(`Matches investment stage: ${a.funding_stage}`)
+            }
+            // Match by sector
+            if (currentAttrs.sectors?.includes(a.industry)) {
+              score += 3; reasons.push(`Target sector: ${a.industry}`)
+            }
+            // Geographic focus
+            if (currentAttrs.geographic_focus?.includes(a.location)) {
+              score += 2; reasons.push(`Target region: ${a.location}`)
+            }
+          }
         }
-        if (currentAttrs.stage && a.stage && currentAttrs.stage === a.stage) {
-          score += 2; reasons.push(`Same stage: ${a.stage}`)
+        
+        // General matching (applies to all)
+        if (currentAttrs.industry && a.industry && currentAttrs.industry === a.industry) {
+          score += 2; reasons.push(`Same industry: ${a.industry}`)
         }
         if (currentAttrs.location && a.location && currentAttrs.location === a.location) {
           score += 1.5; reasons.push(`Same location: ${a.location}`)
         }
         if (currentAttrs.slug && a.slug && slugPrefix(currentAttrs.slug) === slugPrefix(a.slug)) {
-          score += 1; reasons.push('Similar slug')
+          score += 1; reasons.push('Similar company focus')
         }
+        
+        // Add some randomness for diversity if no strong matches
+        if (score === 0 && Math.random() > 0.7) {
+          score = 0.5; reasons.push('Suggested for you')
+        }
+        
         if (score > 0) {
           scored.push({
             id: c.id,
@@ -256,9 +417,16 @@ export async function GET(request) {
         }
       }
 
+      // Sort by score and add to final results
       scored.sort((x, y) => y.score - x.score)
       for (const s of scored) {
-        final.push({ id: s.id, full_name: s.full_name, avatar_url: s.avatar_url, role: s.role, reasons: s.reasons })
+        final.push({ 
+          id: s.id, 
+          full_name: s.full_name, 
+          avatar_url: s.avatar_url, 
+          role: s.role, 
+          reasons: s.reasons 
+        })
         if (final.length >= topK) break
       }
     }

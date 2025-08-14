@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, generateSlug } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import Link from 'next/link'
 import Image from 'next/image'
 import { toast } from 'react-hot-toast'
 import { registerForEvent } from '@/lib/api/eventRegistration'
+import { getEventsForUserRole } from '@/lib/api/events'
 
 export default function ExplorePage() {
   const { user, loading: authLoading } = useAuth()
@@ -99,17 +100,45 @@ export default function ExplorePage() {
   }
 
   const fetchEvents = async () => {
-    const { data, error } = await supabase
-      .from('events')
-      .select('*')
-      .order('start_date', { ascending: true })
-      .limit(20)
+    try {
+      // Get user profile to determine role
+      let userRole = null
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+        userRole = profile?.role
+      }
 
-    if (error) {
+      // Use the new API function that filters by user role
+      const result = await getEventsForUserRole({
+        userRole,
+        limit: 20,
+        upcoming: true
+      })
+
+      if (result.error) {
+        console.error('fetchEvents error:', result.error)
+        throw new Error(result.error)
+      }
+
+      setEvents(result.data || [])
+    } catch (error) {
       console.error('fetchEvents error:', error)
-      throw error
+      // Fallback to basic query if the new API fails
+      const { data, error: fallbackError } = await supabase
+        .from('events')
+        .select('*')
+        .order('start_date', { ascending: true })
+        .limit(20)
+
+      if (fallbackError) {
+        throw fallbackError
+      }
+      setEvents(data || [])
     }
-    setEvents(data || [])
   }
 
   const filteredData = () => {
@@ -212,7 +241,7 @@ export default function ExplorePage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {activeTab === 'startups' && filteredData().map((startup) => (
-              <Link key={startup.id} href={`/profile/${startup.user_id}`}>
+              <Link key={startup.id} href={`/profile/${startup.profiles?.full_name ? generateSlug(startup.profiles.full_name) : startup.user_id}`}>
                 <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer">
                   <div className="flex items-start space-x-4">
                     <div className="w-12 h-12 bg-gray-200 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -244,7 +273,7 @@ export default function ExplorePage() {
             ))}
 
             {activeTab === 'mentors' && filteredData().map((mentor) => (
-              <Link key={mentor.id} href={`/profile/${mentor.user_id}`}>
+              <Link key={mentor.id} href={`/profile/${mentor.profiles?.full_name ? generateSlug(mentor.profiles.full_name) : mentor.user_id}`}>
                 <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer">
                   <div className="flex items-start space-x-4">
                     <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
@@ -276,7 +305,7 @@ export default function ExplorePage() {
             ))}
 
             {activeTab === 'investors' && filteredData().map((investor) => (
-              <Link key={investor.id} href={`/profile/${investor.user_id}`}>
+              <Link key={investor.id} href={`/profile/${investor.profiles?.full_name ? generateSlug(investor.profiles.full_name) : investor.user_id}`}>
                 <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer">
                   <div className="flex items-start space-x-4">
                     <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">

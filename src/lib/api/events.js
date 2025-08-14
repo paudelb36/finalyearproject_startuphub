@@ -126,6 +126,7 @@ export async function createEvent(eventData) {
       .insert({
         organizer_id: user.id,
         ...eventData,
+        target_audience: eventData.target_audience || ['startup', 'mentor', 'investor'],
         status: 'upcoming'
       })
       .select()
@@ -194,6 +195,60 @@ export async function updateEvent(eventId, updates) {
 }
 
 /**
+ * Get events filtered by user role
+ * @param {string} userRole - User's role
+ * @param {Object} filters - Additional filters
+ * @returns {Array} Array of events
+ */
+export async function getEventsForUserRole(userRole, filters = {}) {
+  try {
+    let query = supabase
+      .from('events')
+      .select(`
+        *,
+        organizer:profiles!events_organizer_id_fkey(
+          id,
+          full_name,
+          avatar_url
+        ),
+        registrations:event_registrations(
+          id,
+          user_id,
+          status
+        )
+      `)
+      .gte('start_date', new Date().toISOString())
+      .eq('is_public', true)
+
+    // Apply role-based filtering
+    if (userRole && userRole !== 'admin') {
+      query = query.or(`target_audience.cs.{"all"},target_audience.cs.{"${userRole}"}`)
+    }
+
+    // Apply additional filters
+    if (filters.event_type) {
+      query = query.eq('event_type', filters.event_type)
+    }
+    
+    if (filters.search) {
+      query = query.or(`
+        title.ilike.%${filters.search}%,
+        description.ilike.%${filters.search}%
+      `)
+    }
+
+    query = query.order('start_date', { ascending: true })
+
+    const { data, error } = await query
+    if (error) throw error
+    return data || []
+  } catch (error) {
+    console.error('Error fetching events for user role:', error)
+    throw error
+  }
+}
+
+/**
  * Register for event
  * @param {string} eventId - Event ID
  * @param {Object} registrationData - Registration data
@@ -211,7 +266,7 @@ export async function registerForEvent(eventId, registrationData = {}) {
     // Check if event exists and is open for registration
     const { data: event } = await supabase
       .from('events')
-      .select('*')
+      .select('*, target_audience')
       .eq('id', eventId)
       .single()
 
@@ -225,6 +280,22 @@ export async function registerForEvent(eventId, registrationData = {}) {
 
     if (new Date(event.registration_deadline) < new Date()) {
       return { error: 'Registration deadline has passed', status: 400 }
+    }
+
+    // Check if user's role is allowed for this event
+    const { data: userProfile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (event.target_audience && event.target_audience.length > 0) {
+      const canRegister = event.target_audience.includes('all') || 
+                         event.target_audience.includes(userProfile?.role)
+      
+      if (!canRegister) {
+        return { error: 'This event is not open to your user type', status: 403 }
+      }
     }
 
     // Check if user is already registered

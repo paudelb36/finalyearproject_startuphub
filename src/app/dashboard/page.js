@@ -1,125 +1,131 @@
-'use client'
+"use client";
 
-import { useState, useEffect } from 'react'
-import { useAuth } from '@/hooks/useAuth'
-import { supabase } from '@/lib/supabase'
-import { toast } from 'react-hot-toast'
-import StartupDashboard from '@/components/dashboards/StartupDashboard'
-import MentorDashboard from '@/components/dashboards/MentorDashboard'
-import InvestorDashboard from '@/components/dashboards/InvestorDashboard'
-import Link from 'next/link'
+import { useState, useEffect } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { useStore, useLoadingState } from "@/lib/store";
+import { toast } from "react-hot-toast";
+import StartupDashboard from "@/components/dashboards/StartupDashboard";
+import MentorDashboard from "@/components/dashboards/MentorDashboard";
+import InvestorDashboard from "@/components/dashboards/InvestorDashboard";
+import { DashboardStatsSkeleton } from "@/components/ui/LoadingSkeleton";
+import Link from "next/link";
 
 export default function DashboardPage() {
-  const { user, profile: authProfile, loading: authLoading } = useAuth()
-  const [profile, setProfile] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const { user, loading: authLoading } = useAuth();
+  const [profile, setProfile] = useState(null);
+  const getProfile = useStore((state) => state.getProfile);
+  const { loading, error } = useLoadingState('profiles', user?.id || 'anonymous');
 
   useEffect(() => {
     if (user) {
-      fetchUserProfile()
+      fetchUserProfile();
     }
-  }, [user, authProfile])
+  }, [user]);
 
   const fetchUserProfile = async () => {
     try {
-      setLoading(true)
+      // Get basic profile from cache or Supabase
+      const profileData = await getProfile(user.id);
       
-      // Prefer profile from auth context to avoid redundant fetch
-      let profileData = authProfile
       if (!profileData) {
-        const { data, error: profileError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .maybeSingle()
-
-        if (profileError) {
-          console.error('Error fetching profile:', profileError)
-          toast.error('Failed to load profile')
-          return
-        }
-        if (!data) {
-          setProfile(null)
-          setLoading(false)
-          return
-        }
-        profileData = data
+        toast.error("Failed to load profile");
+        return;
       }
 
       // Get role-specific data
-      let roleSpecificData = null
+      let roleSpecificData = null;
       if (profileData.role) {
-        roleSpecificData = await fetchRoleSpecificData(profileData.role, user.id)
+        roleSpecificData = await fetchRoleSpecificData(
+          profileData.role,
+          user.id
+        );
       }
 
       setProfile({
         ...profileData,
-        roleSpecificData
-      })
+        roleSpecificData,
+      });
     } catch (error) {
-      console.error('Error fetching user profile:', error)
-      toast.error('Failed to load dashboard')
-    } finally {
-      setLoading(false)
+      console.error("Dashboard fetchUserProfile error details:", {
+        errorType: typeof error,
+        errorConstructor: error?.constructor?.name,
+        message: error?.message,
+        code: error?.code,
+        details: error?.details,
+        hint: error?.hint,
+        status: error?.status,
+        statusCode: error?.statusCode,
+        userId: user?.id,
+        errorString: String(error),
+        errorKeys: Object.keys(error || {})
+      });
+      
+      // Try to stringify the full error
+      try {
+        console.error('Dashboard full error object:', JSON.stringify(error, null, 2))
+      } catch (stringifyError) {
+        console.error('Dashboard error stringifying error:', stringifyError.message)
+        console.error('Dashboard raw error:', error)
+      }
+      
+      const errorMessage = error?.message || error?.code || 'Unknown error occurred';
+      toast.error(`Failed to load dashboard: ${errorMessage}`);
     }
-  }
+  };
 
   const fetchRoleSpecificData = async (role, userId) => {
+    const getStartupByUserId = useStore.getState().getStartupByUserId;
+    const getMentorById = useStore.getState().getMentorById;
+    const getInvestorById = useStore.getState().getInvestorById;
+    
     try {
       switch (role) {
-        case 'startup':
-          const { data: startupData, error: startupError } = await supabase
-            .from('startup_profiles')
-            .select('*')
-            .eq('user_id', userId)
-            .single()
-          
-          if (startupError && startupError.code !== 'PGRST116') {
-            console.error('Error fetching startup profile:', startupError)
+        case "startup":
+          try {
+            return await getStartupByUserId(userId);
+          } catch (error) {
+            if (error.message?.includes('not found')) return null;
+            console.error("Error fetching startup profile:", error);
+            return null;
           }
-          return startupData
 
-        case 'mentor':
-          const { data: mentorData, error: mentorError } = await supabase
-            .from('mentor_profiles')
-            .select('*')
-            .eq('user_id', userId)
-            .single()
-          
-          if (mentorError && mentorError.code !== 'PGRST116') {
-            console.error('Error fetching mentor profile:', mentorError)
+        case "mentor":
+          try {
+            return await getMentorById(userId);
+          } catch (error) {
+            if (error.message?.includes('not found')) return null;
+            console.error("Error fetching mentor profile:", error);
+            return null;
           }
-          return mentorData
 
-        case 'investor':
-          const { data: investorData, error: investorError } = await supabase
-            .from('investor_profiles')
-            .select('*')
-            .eq('user_id', userId)
-            .single()
-          
-          if (investorError && investorError.code !== 'PGRST116') {
-            console.error('Error fetching investor profile:', investorError)
+        case "investor":
+          try {
+            return await getInvestorById(userId);
+          } catch (error) {
+            if (error.message?.includes('not found')) return null;
+            console.error("Error fetching investor profile:", error);
+            return null;
           }
-          return investorData
 
         default:
-          return null
+          return null;
       }
     } catch (error) {
-      console.error('Error fetching role-specific data:', error)
-      return null
+      console.error("Error fetching role-specific data:", error);
+      return null;
     }
-  }
+  };
 
   const renderDashboard = () => {
     if (!profile) {
       return (
         <div className="max-w-7xl mx-auto p-6">
           <div className="text-center py-12">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">Profile Not Found</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">
+              Profile Not Found
+            </h2>
             <p className="text-gray-700 mb-6">
-              We couldn't find your profile. Please complete your profile setup.
+              We couldn&apos;t find your profile. Please complete your profile setup.
             </p>
             <Link
               href="/profile/setup"
@@ -129,21 +135,23 @@ export default function DashboardPage() {
             </Link>
           </div>
         </div>
-      )
+      );
     }
 
     switch (profile.role) {
-      case 'startup':
-        return <StartupDashboard profile={profile} />
-      case 'mentor':
-        return <MentorDashboard profile={profile} />
-      case 'investor':
-        return <InvestorDashboard profile={profile} />
+      case "startup":
+        return <StartupDashboard profile={profile} />;
+      case "mentor":
+        return <MentorDashboard profile={profile} />;
+      case "investor":
+        return <InvestorDashboard profile={profile} />;
       default:
         return (
           <div className="max-w-7xl mx-auto p-6">
             <div className="text-center py-12">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">Role Not Set</h2>
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">
+                Role Not Set
+              </h2>
               <p className="text-gray-700 mb-6">
                 Please select your role to access your dashboard.
               </p>
@@ -155,23 +163,27 @@ export default function DashboardPage() {
               </Link>
             </div>
           </div>
-        )
+        );
     }
-  }
+  };
 
   if (authLoading || loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-gray-50 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <DashboardStatsSkeleton />
+        </div>
       </div>
-    )
+    );
   }
 
   if (!user) {
     return (
       <div className="max-w-7xl mx-auto p-6">
         <div className="text-center py-12">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Access Denied</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">
+            Access Denied
+          </h2>
           <p className="text-gray-700 mb-6">
             Please log in to access your dashboard.
           </p>
@@ -183,8 +195,8 @@ export default function DashboardPage() {
           </Link>
         </div>
       </div>
-    )
+    );
   }
 
-  return renderDashboard()
+  return renderDashboard();
 }

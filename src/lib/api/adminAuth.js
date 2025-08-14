@@ -2,7 +2,6 @@
 // This bypasses Supabase auth and uses the separate admin_users table
 
 import { supabase } from '../supabase.js';
-import bcrypt from 'bcryptjs';
 
 // Admin login function
 export async function adminLogin(email, password) {

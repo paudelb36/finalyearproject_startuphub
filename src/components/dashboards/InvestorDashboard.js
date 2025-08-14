@@ -2,12 +2,15 @@
 
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/hooks/useAuth'
-import { supabase } from '@/lib/supabase'
+import { useStore, useLoadingState } from '@/lib/store'
+import { supabase, generateSlug } from '@/lib/supabase'
 import Link from 'next/link'
 import Image from 'next/image'
 import { toast } from 'react-hot-toast'
 import { getInvestmentRequests, respondToInvestmentRequest } from '@/lib/api/requests'
 import { getUserConnections, getConnectionStats } from '@/lib/api/connections'
+import { getUserEventRegistrations, cancelEventRegistration } from '@/lib/api/eventRegistration'
+import { RecommendationCardSkeleton } from '@/components/ui/LoadingSkeleton'
 
 export default function InvestorDashboard({ profile }) {
   const { user } = useAuth()
@@ -21,10 +24,13 @@ export default function InvestorDashboard({ profile }) {
   const [activeInvestments, setActiveInvestments] = useState([])
   const [connections, setConnections] = useState([])
   const [recentActivity, setRecentActivity] = useState([])
+  const [registeredEvents, setRegisteredEvents] = useState([])
+  const [eventsLoading, setEventsLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
+  const getRecommendations = useStore((state) => state.getRecommendations)
   const [recs, setRecs] = useState([])
-  const [recsLoading, setRecsLoading] = useState(false)
+  const { loading: recsLoading } = useLoadingState('recommendations', user?.id ? `${user.id}_8` : 'anonymous_8')
   const [respondingTo, setRespondingTo] = useState(null)
   const [responseMessage, setResponseMessage] = useState('')
 
@@ -36,33 +42,45 @@ export default function InvestorDashboard({ profile }) {
 
   const fetchDashboardData = async () => {
     try {
-      setLoading(true)
-      await Promise.all([
-        fetchStats(),
-        fetchInvestmentRequests(),
-        fetchConnections(),
-        fetchRecentActivity(),
-        fetchRecommendations()
-      ])
+      setLoading(false) // Show dashboard immediately
+      // Load data independently without blocking UI
+      fetchStats()
+      fetchInvestmentRequests()
+      fetchConnections()
+      fetchRecentActivity()
+      fetchRecommendations()
+      fetchRegisteredEvents()
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
       toast.error('Failed to load dashboard data')
-    } finally {
-      setLoading(false)
     }
   }
 
   const fetchRecommendations = async () => {
     try {
-      setRecsLoading(true)
-      const res = await fetch(`/api/recommendations?topK=8&targetRole=startup&userId=${user?.id}`)
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error || 'Failed to load')
-      setRecs(json.data || [])
+      const recommendations = await getRecommendations(user.id, 8)
+      setRecs(recommendations || [])
     } catch (e) {
       console.error('fetchRecommendations error:', e)
+      setRecs([])
+    }
+  }
+
+  const fetchRegisteredEvents = async () => {
+    try {
+      setEventsLoading(true)
+      const result = await getUserEventRegistrations(user.id)
+      if (result.error) {
+        console.error('Error fetching registered events:', result.error)
+        setRegisteredEvents([])
+      } else {
+        setRegisteredEvents(result.data || [])
+      }
+    } catch (error) {
+      console.error('Error fetching registered events:', error)
+      setRegisteredEvents([])
     } finally {
-      setRecsLoading(false)
+      setEventsLoading(false)
     }
   }
 
@@ -481,34 +499,140 @@ export default function InvestorDashboard({ profile }) {
     </div>
   )
 
+  const renderEvents = () => (
+    <div className="bg-white rounded-lg shadow-sm p-6">
+      <h3 className="text-xl font-semibold text-gray-900 mb-4">My Events</h3>
+      {eventsLoading ? (
+        <div className="space-y-4">
+          {Array.from({ length: 3 }, (_, i) => (
+            <div key={i} className="animate-pulse">
+              <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+              <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+            </div>
+          ))}
+        </div>
+      ) : registeredEvents.length > 0 ? (
+        <div className="space-y-4">
+          {registeredEvents.map((registration) => {
+            const event = registration.events
+            const eventDate = new Date(event.date)
+            const now = new Date()
+            const isUpcoming = eventDate > now
+            const isPast = eventDate < now
+            const isToday = eventDate.toDateString() === now.toDateString()
+            
+            let statusColor = 'bg-gray-100 text-gray-600'
+            let statusText = 'Past'
+            
+            if (isUpcoming) {
+              statusColor = 'bg-blue-100 text-blue-600'
+              statusText = 'Upcoming'
+            } else if (isToday) {
+              statusColor = 'bg-green-100 text-green-600'
+              statusText = 'Today'
+            }
+            
+            return (
+              <div key={registration.id} className="border border-gray-200 rounded-lg p-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <h4 className="font-medium text-gray-900">{event.title}</h4>
+                    <p className="text-gray-600 text-sm mt-1">{event.description}</p>
+                    <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
+                      <span>📅 {eventDate.toLocaleDateString()}</span>
+                      <span>🕒 {eventDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      {event.location && <span>📍 {event.location}</span>}
+                    </div>
+                    {event.meeting_link && (isUpcoming || isToday) && (
+                      <a
+                        href={event.meeting_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block mt-2 px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                      >
+                        Join Meeting
+                      </a>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColor}`}>
+                      {statusText}
+                    </span>
+                    {isUpcoming && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            const result = await cancelEventRegistration(registration.id)
+                            if (result.error) {
+                              toast.error('Failed to cancel registration')
+                            } else {
+                              toast.success('Registration cancelled successfully')
+                              fetchRegisteredEvents()
+                            }
+                          } catch (error) {
+                            console.error('Error cancelling registration:', error)
+                            toast.error('Failed to cancel registration')
+                          }
+                        }}
+                        className="px-3 py-1 text-red-600 border border-red-600 rounded text-sm hover:bg-red-50"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="text-center py-8">
+          <p className="text-gray-600 mb-4">No events registered yet</p>
+          <Link
+            to="/explore"
+            className="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Browse Events
+          </Link>
+        </div>
+      )}
+    </div>
+  )
+
   const renderRecommendations = () => (
     <div className="bg-white rounded-lg shadow-sm p-6">
       <h3 className="text-xl font-semibold text-gray-900 mb-4">Recommendations</h3>
       {recsLoading ? (
-        <p className="text-gray-600">Loading recommendations...</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }, (_, i) => (
+            <RecommendationCardSkeleton key={i} />
+          ))}
+        </div>
       ) : recs.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {recs.map((r) => (
-            <div key={r.id} className="border border-gray-200 rounded-lg p-4">
-              <div className="flex items-center space-x-3">
-                <div className="w-12 h-12">
-                  <Image
-                    src={r.avatar_url || 'data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"48\" height=\"48\"><rect width=\"100%\" height=\"100%\" rx=\"24\" fill=\"%23e5e7eb\"/></svg>'}
-                    alt={r.full_name || 'User'}
-                    width={48}
-                    height={48}
-                    className="rounded-full object-cover"
-                  />
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-medium text-gray-900">{r.full_name || 'User'}</h4>
-                  <p className="text-sm text-gray-700 capitalize">{r.role}</p>
-                  {r.reasons?.length > 0 && (
-                    <p className="text-xs text-gray-500 mt-1">{r.reasons[0]}</p>
-                  )}
+            <Link key={r.id} href={`/profile/${r.full_name ? generateSlug(r.full_name) : r.id}`}>
+              <div className="border border-gray-200 rounded-lg p-4 hover:shadow-md hover:border-blue-300 transition-all duration-200 cursor-pointer">
+                <div className="flex items-center space-x-3">
+                  <div className="w-12 h-12">
+                    <Image
+                      src={r.avatar_url || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="100%" height="100%" rx="24" fill="%23e5e7eb"/></svg>'}
+                      alt={r.full_name || 'User'}
+                      width={48}
+                      height={48}
+                      className="rounded-full object-cover"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-medium text-gray-900 hover:text-blue-600">{r.full_name || 'User'}</h4>
+                    <p className="text-sm text-gray-700 capitalize">{r.role}</p>
+                    {r.reasons?.length > 0 && (
+                      <p className="text-xs text-gray-500 mt-1">{r.reasons[0]}</p>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       ) : (
@@ -535,6 +659,7 @@ export default function InvestorDashboard({ profile }) {
             { id: 'requests', name: 'Investment Requests' },
             { id: 'portfolio', name: 'Portfolio' },
             { id: 'connections', name: 'Connections' },
+            { id: 'events', name: 'Events' },
             { id: 'recommendations', name: 'Recommendations' }
           ].map((tab) => (
             <button
@@ -557,6 +682,7 @@ export default function InvestorDashboard({ profile }) {
       {activeTab === 'requests' && renderInvestmentRequests()}
       {activeTab === 'portfolio' && renderPortfolio()}
       {activeTab === 'connections' && renderConnections()}
+      {activeTab === 'events' && renderEvents()}
       {activeTab === 'recommendations' && renderRecommendations()}
 
       {/* Response Modal */}

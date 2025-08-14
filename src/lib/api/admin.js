@@ -787,6 +787,7 @@ export async function createEventAsAdmin(eventData, adminId) {
         registration_deadline: formattedEventData.registration_deadline,
         is_public: eventData.is_public,
         tags: eventData.tags || [],
+        target_audience: eventData.target_audience || ['startup', 'mentor', 'investor'],
         created_at: new Date().toISOString()
       })
       .select()

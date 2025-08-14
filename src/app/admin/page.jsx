@@ -56,6 +56,7 @@ const AdminDashboard = () => {
     registration_deadline: "",
     is_public: true,
     tags: [],
+    target_audience: ['startup', 'mentor', 'investor'],
   });
   const [editEvent, setEditEvent] = useState({});
 
@@ -186,6 +187,7 @@ const AdminDashboard = () => {
         registration_deadline: "",
         is_public: true,
         tags: [],
+        target_audience: ['startup', 'mentor', 'investor'],
       });
       loadDashboardData();
     } catch (error) {
@@ -951,6 +953,42 @@ const AdminDashboard = () => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
                     style={{ color: "#111827" }}
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Target Audience
+                  </label>
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap gap-2">
+                      {['startup', 'mentor', 'investor'].map((audience) => (
+                        <label key={audience} className="flex items-center">
+                          <input
+                            type="checkbox"
+                            checked={newEvent.target_audience?.includes(audience) || false}
+                            onChange={(e) => {
+                              const currentAudience = newEvent.target_audience || ['startup', 'mentor', 'investor'];
+                              if (e.target.checked) {
+                                setNewEvent({
+                                  ...newEvent,
+                                  target_audience: [...currentAudience.filter(a => a !== audience), audience]
+                                });
+                              } else {
+                                setNewEvent({
+                                  ...newEvent,
+                                  target_audience: currentAudience.filter(a => a !== audience)
+                                });
+                              }
+                            }}
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mr-2"
+                          />
+                          <span className="text-sm text-gray-700 capitalize">{audience}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Select who can register for this event. If none selected, all user types can register.
+                    </p>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="flex items-center">

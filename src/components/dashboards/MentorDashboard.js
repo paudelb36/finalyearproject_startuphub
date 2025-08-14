@@ -2,12 +2,15 @@
 
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/hooks/useAuth'
-import { supabase } from '@/lib/supabase'
+import { useStore, useLoadingState } from '@/lib/store'
+import { supabase, generateSlug } from '@/lib/supabase'
 import Link from 'next/link'
 import Image from 'next/image'
 import { toast } from 'react-hot-toast'
 import { getMentorshipRequests, respondToMentorshipRequest } from '@/lib/api/requests'
 import { getUserConnections, getConnectionStats } from '@/lib/api/connections'
+import { getUserEventRegistrations, cancelEventRegistration } from '@/lib/api/eventRegistration'
+import { RecommendationCardSkeleton } from '@/components/ui/LoadingSkeleton'
 
 export default function MentorDashboard({ profile }) {
   const { user } = useAuth()
@@ -21,10 +24,13 @@ export default function MentorDashboard({ profile }) {
   const [activeMentorships, setActiveMentorships] = useState([])
   const [connections, setConnections] = useState([])
   const [recentActivity, setRecentActivity] = useState([])
+  const [registeredEvents, setRegisteredEvents] = useState([])
+  const [eventsLoading, setEventsLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
+  const getRecommendations = useStore((state) => state.getRecommendations)
   const [recs, setRecs] = useState([])
-  const [recsLoading, setRecsLoading] = useState(false)
+  const { loading: recsLoading } = useLoadingState('recommendations', user?.id ? `${user.id}_8` : 'anonymous_8')
   const [respondingTo, setRespondingTo] = useState(null)
   const [responseMessage, setResponseMessage] = useState('')
 
@@ -36,33 +42,45 @@ export default function MentorDashboard({ profile }) {
 
   const fetchDashboardData = async () => {
     try {
-      setLoading(true)
-      await Promise.all([
-        fetchStats(),
-        fetchMentorshipRequests(),
-        fetchConnections(),
-        fetchRecentActivity(),
-        fetchRecommendations()
-      ])
+      setLoading(false) // Show dashboard immediately
+      // Load data independently without blocking UI
+      fetchStats()
+      fetchMentorshipRequests()
+      fetchConnections()
+      fetchRecentActivity()
+      fetchRecommendations()
+      fetchRegisteredEvents()
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
       toast.error('Failed to load dashboard data')
-    } finally {
-      setLoading(false)
     }
   }
 
   const fetchRecommendations = async () => {
     try {
-      setRecsLoading(true)
-      const res = await fetch(`/api/recommendations?topK=8&targetRole=startup&userId=${user?.id}`)
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error || 'Failed to load')
-      setRecs(json.data || [])
+      const recommendations = await getRecommendations(user.id, 8)
+      setRecs(recommendations || [])
     } catch (e) {
       console.error('fetchRecommendations error:', e)
+      setRecs([])
+    }
+  }
+
+  const fetchRegisteredEvents = async () => {
+    try {
+      setEventsLoading(true)
+      const result = await getUserEventRegistrations(user.id)
+      if (result.error) {
+        console.error('Error fetching registered events:', result.error)
+        setRegisteredEvents([])
+      } else {
+        setRegisteredEvents(result.data || [])
+      }
+    } catch (error) {
+      console.error('Error fetching registered events:', error)
+      setRegisteredEvents([])
     } finally {
-      setRecsLoading(false)
+      setEventsLoading(false)
     }
   }
 
@@ -452,34 +470,157 @@ export default function MentorDashboard({ profile }) {
     </div>
   )
 
+  const renderEvents = () => (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold text-gray-900">My Events</h2>
+        <Link 
+          href="/explore?tab=events" 
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          Browse Events
+        </Link>
+      </div>
+
+      {eventsLoading ? (
+        <div className="space-y-4">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="bg-white rounded-lg shadow-sm p-6 animate-pulse">
+              <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+              <div className="h-3 bg-gray-200 rounded w-1/2 mb-4"></div>
+              <div className="h-3 bg-gray-200 rounded w-1/4"></div>
+            </div>
+          ))}
+        </div>
+      ) : registeredEvents.length > 0 ? (
+        <div className="space-y-4">
+          {registeredEvents.map((registration) => {
+            const event = registration.event
+            const isUpcoming = new Date(event.start_date) > new Date()
+            const isPast = new Date(event.end_date) < new Date()
+            
+            return (
+              <div key={registration.id} className="bg-white rounded-lg shadow-sm p-6 border-l-4 border-blue-500">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <h3 className="text-lg font-semibold text-gray-900">{event.title}</h3>
+                      <span className={`px-2 py-1 text-xs rounded-full ${
+                        isUpcoming ? 'bg-green-100 text-green-800' : 
+                        isPast ? 'bg-gray-100 text-gray-800' : 'bg-blue-100 text-blue-800'
+                      }`}>
+                        {isUpcoming ? 'Upcoming' : isPast ? 'Past' : 'Ongoing'}
+                      </span>
+                    </div>
+                    <p className="text-gray-600 mb-3 line-clamp-2">{event.description}</p>
+                    <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
+                      <div className="flex items-center space-x-2">
+                        <span>📅</span>
+                        <span>{new Date(event.start_date).toLocaleDateString()}</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <span>⏰</span>
+                        <span>{new Date(event.start_date).toLocaleTimeString()}</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <span>📍</span>
+                        <span>{event.location || 'Online'}</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <span>🎯</span>
+                        <span className="capitalize">{event.event_type}</span>
+                      </div>
+                    </div>
+                    {event.google_meet_link && isUpcoming && (
+                      <div className="mt-3">
+                        <a 
+                          href={event.google_meet_link} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800 text-sm"
+                        >
+                          🔗 Join Meeting
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                  <div className="ml-4">
+                    {isUpcoming && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            const result = await cancelEventRegistration(event.id)
+                            if (result.error) {
+                              toast.error(result.error)
+                            } else {
+                              toast.success('Registration cancelled')
+                              fetchRegisteredEvents()
+                            }
+                          } catch (error) {
+                            toast.error('Failed to cancel registration')
+                          }
+                        }}
+                        className="text-red-600 hover:text-red-800 text-sm px-3 py-1 border border-red-300 rounded hover:bg-red-50 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="text-center py-12">
+          <div className="text-gray-400 text-6xl mb-4">📅</div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No Events Registered</h3>
+          <p className="text-gray-600 mb-4">You haven't registered for any events yet.</p>
+          <Link 
+            href="/explore?tab=events" 
+            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Browse Available Events
+          </Link>
+        </div>
+      )}
+    </div>
+  )
+
   const renderRecommendations = () => (
     <div className="bg-white rounded-lg shadow-sm p-6">
       <h3 className="text-xl font-semibold text-gray-900 mb-4">Recommendations</h3>
       {recsLoading ? (
-        <p className="text-gray-600">Loading recommendations...</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }, (_, i) => (
+            <RecommendationCardSkeleton key={i} />
+          ))}
+        </div>
       ) : recs.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {recs.map((r) => (
-            <div key={r.id} className="border border-gray-200 rounded-lg p-4">
-              <div className="flex items-center space-x-3">
-                <div className="w-12 h-12">
-                  <Image
-                    src={r.avatar_url || 'data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"48\" height=\"48\"><rect width=\"100%\" height=\"100%\" rx=\"24\" fill=\"%23e5e7eb\"/></svg>'}
-                    alt={r.full_name || 'User'}
-                    width={48}
-                    height={48}
-                    className="rounded-full object-cover"
-                  />
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-medium text-gray-900">{r.full_name || 'User'}</h4>
-                  <p className="text-sm text-gray-700 capitalize">{r.role}</p>
-                  {r.reasons?.length > 0 && (
-                    <p className="text-xs text-gray-500 mt-1">{r.reasons[0]}</p>
-                  )}
+            <Link key={r.id} href={`/profile/${r.full_name ? generateSlug(r.full_name) : r.id}`}>
+              <div className="border border-gray-200 rounded-lg p-4 hover:shadow-md hover:border-blue-300 transition-all duration-200 cursor-pointer">
+                <div className="flex items-center space-x-3">
+                  <div className="w-12 h-12">
+                    <Image
+                      src={r.avatar_url || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="100%" height="100%" rx="24" fill="%23e5e7eb"/></svg>'}
+                      alt={r.full_name || 'User'}
+                      width={48}
+                      height={48}
+                      className="rounded-full object-cover"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-medium text-gray-900 hover:text-blue-600">{r.full_name || 'User'}</h4>
+                    <p className="text-sm text-gray-700 capitalize">{r.role}</p>
+                    {r.reasons?.length > 0 && (
+                      <p className="text-xs text-gray-500 mt-1">{r.reasons[0]}</p>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       ) : (
@@ -505,6 +646,7 @@ export default function MentorDashboard({ profile }) {
             { id: 'overview', name: 'Overview' },
             { id: 'requests', name: 'Mentorship Requests' },
             { id: 'connections', name: 'Connections' },
+            { id: 'events', name: 'Events' },
             { id: 'recommendations', name: 'Recommendations' }
           ].map((tab) => (
             <button
@@ -526,6 +668,7 @@ export default function MentorDashboard({ profile }) {
       {activeTab === 'overview' && renderOverview()}
       {activeTab === 'requests' && renderMentorshipRequests()}
       {activeTab === 'connections' && renderConnections()}
+      {activeTab === 'events' && renderEvents()}
       {activeTab === 'recommendations' && renderRecommendations()}
 
       {/* Response Modal */}
