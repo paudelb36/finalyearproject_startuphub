@@ -226,7 +226,7 @@ export default function HomePage() {
               {startups.map((startup, index) => (
                 <Link
                   key={startup.id}
-                  href={`/startups/${startup.slug}`}
+                  href={`/startups/${startup.slug || startup.id || 'unknown'}`}
                   className="group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 p-8 transform hover:-translate-y-2 border border-gray-100"
                   style={{ animationDelay: `${index * 100}ms` }}
                 >
@@ -366,7 +366,7 @@ export default function HomePage() {
                     )}
                     <div className="ml-4 flex-1">
                       <Link
-                        href={`/startups/${update.startup_profiles?.slug}`}
+                        href={`/startups/${update.startup_profiles?.slug || update.startup_profiles?.id || 'unknown'}`}
                         className="font-bold text-xl text-gray-900 hover:text-blue-600 transition-colors"
                       >
                         {update.startup_profiles?.company_name}

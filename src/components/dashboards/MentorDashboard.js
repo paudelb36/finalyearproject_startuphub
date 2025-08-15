@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { useStore, useLoadingState } from '@/lib/store'
 import { supabase, generateSlug } from '@/lib/supabase'
 import Link from 'next/link'
 import Image from 'next/image'
 import { toast } from 'react-hot-toast'
+import { fetchEssentialData, fetchSecondaryData, fetchTertiaryData } from '@/lib/services/dashboardDataService'
 import { getMentorshipRequests, respondToMentorshipRequest } from '@/lib/api/requests'
 import { getUserConnections, getConnectionStats } from '@/lib/api/connections'
 import { getUserEventRegistrations, cancelEventRegistration } from '@/lib/api/eventRegistration'
@@ -14,19 +15,29 @@ import { RecommendationCardSkeleton } from '@/components/ui/LoadingSkeleton'
 
 export default function MentorDashboard({ profile }) {
   const { user } = useAuth()
+  const [loading, setLoading] = useState(true)
+  
+  // Progressive loading states
+  const [essentialData, setEssentialData] = useState(null)
+  const [secondaryData, setSecondaryData] = useState(null)
+  const [tertiaryData, setTertiaryData] = useState(null)
+  const [essentialLoading, setEssentialLoading] = useState(true)
+  const [secondaryLoading, setSecondaryLoading] = useState(true)
+  const [tertiaryLoading, setTertiaryLoading] = useState(true)
+  
+  // Legacy states for compatibility
   const [stats, setStats] = useState({
     connections: 0,
     mentorshipRequests: 0,
     activeMentorships: 0,
     totalEarnings: 0
   })
+  const [statsLoading, setStatsLoading] = useState(true)
   const [mentorshipRequests, setMentorshipRequests] = useState([])
   const [activeMentorships, setActiveMentorships] = useState([])
   const [connections, setConnections] = useState([])
   const [recentActivity, setRecentActivity] = useState([])
-  const [registeredEvents, setRegisteredEvents] = useState([])
-  const [eventsLoading, setEventsLoading] = useState(false)
-  const [loading, setLoading] = useState(true)
+  // Registered events are now handled by tertiaryData
   const [activeTab, setActiveTab] = useState('overview')
   const getRecommendations = useStore((state) => state.getRecommendations)
   const [recs, setRecs] = useState([])
@@ -40,158 +51,48 @@ export default function MentorDashboard({ profile }) {
     }
   }, [user, profile])
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(false) // Show dashboard immediately
-      // Load data independently without blocking UI
-      fetchStats()
-      fetchMentorshipRequests()
-      fetchConnections()
-      fetchRecentActivity()
-      fetchRecommendations()
-      fetchRegisteredEvents()
+      
+      // Progressive loading: Essential data first
+      setEssentialLoading(true)
+      const essential = await fetchEssentialData(user, profile)
+      setEssentialData(essential)
+      setEssentialLoading(false)
+      
+      // Secondary data
+      setSecondaryLoading(true)
+      const secondary = await fetchSecondaryData(user, profile)
+      setSecondaryData(secondary)
+      setSecondaryLoading(false)
+      
+      // Tertiary data (non-critical)
+      setTertiaryLoading(true)
+      const tertiary = await fetchTertiaryData(user, profile)
+      setTertiaryData(tertiary)
+      setTertiaryLoading(false)
+      
+      // Legacy event fetching
+      // Events are now loaded as part of tertiary data
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
       toast.error('Failed to load dashboard data')
+      setEssentialLoading(false)
+      setSecondaryLoading(false)
+      setTertiaryLoading(false)
     }
-  }
+  }, [user?.id, profile?.roleSpecificData?.id])
 
-  const fetchRecommendations = async () => {
-    try {
-      const recommendations = await getRecommendations(user.id, 8)
-      setRecs(recommendations || [])
-    } catch (e) {
-      console.error('fetchRecommendations error:', e)
-      setRecs([])
-    }
-  }
+  // Recommendations are now handled by the data service
 
-  const fetchRegisteredEvents = async () => {
-    try {
-      setEventsLoading(true)
-      const result = await getUserEventRegistrations(user.id)
-      if (result.error) {
-        console.error('Error fetching registered events:', result.error)
-        setRegisteredEvents([])
-      } else {
-        setRegisteredEvents(result.data || [])
-      }
-    } catch (error) {
-      console.error('Error fetching registered events:', error)
-      setRegisteredEvents([])
-    } finally {
-      setEventsLoading(false)
-    }
-  }
+  // Event fetching is now handled by the data service
 
-  const fetchStats = async () => {
-    try {
-      const connectionStats = await getConnectionStats(user.id)
-      
-      // Get mentorship request stats
-      const { data: mentorshipStats } = await supabase
-        .from('mentorship_requests')
-        .select('status')
-        .eq('mentor_id', user.id)
+  // Stats are now handled by the data service
 
-      const pendingRequests = mentorshipStats?.filter(req => req.status === 'pending').length || 0
-      const activeMentorships = mentorshipStats?.filter(req => req.status === 'accepted').length || 0
+  // Mentorship requests and connections are now handled by the data service
 
-      setStats({
-        connections: connectionStats.total_connections || 0,
-        mentorshipRequests: pendingRequests,
-        activeMentorships,
-        totalEarnings: 0 // This would come from a transactions table
-      })
-    } catch (error) {
-      console.error('Error fetching stats:', error)
-    }
-  }
-
-  const fetchMentorshipRequests = async () => {
-    try {
-      const response = await getMentorshipRequests(user.id, 'received')
-      const requests = response?.data || []
-      setMentorshipRequests(requests)
-      
-      const accepted = requests.filter(req => req.status === 'accepted') || []
-      setActiveMentorships(accepted)
-    } catch (error) {
-      console.error('Error fetching mentorship requests:', error?.message || error)
-      setMentorshipRequests([])
-      setActiveMentorships([])
-    }
-  }
-
-  const fetchConnections = async () => {
-    try {
-      const connectionsData = await getUserConnections(user.id)
-      setConnections(connectionsData || [])
-    } catch (error) {
-      console.error('Error fetching connections:', error)
-    }
-  }
-
-  const fetchRecentActivity = async () => {
-    try {
-      const activities = []
-
-      // Recent connections
-      const { data: recentConnections } = await supabase
-        .from('connections')
-        .select(`
-          *,
-          requester:profiles!requester_id(full_name),
-          target:profiles!target_id(full_name)
-        `)
-        .or(`requester_id.eq.${user.id},target_id.eq.${user.id}`)
-        .order('created_at', { ascending: false })
-        .limit(5)
-
-      recentConnections?.forEach((conn) => {
-        const isRequester = conn.requester_id === user.id
-        activities.push({
-          id: `conn-${conn.id}`,
-          type: 'connection',
-          title: isRequester
-            ? `Connected with ${conn.target.full_name}`
-            : `${conn.requester.full_name} connected with you`,
-          time: conn.created_at,
-          status: conn.status
-        })
-      })
-
-      // Recent mentorship requests
-      const { data: recentRequests } = await supabase
-        .from('mentorship_requests')
-        .select(`
-          *,
-          startup:profiles!startup_id(
-            id,
-            full_name
-          )
-        `)
-        .eq('mentor_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(5)
-
-      recentRequests?.forEach((req) => {
-        activities.push({
-          id: `mentor-${req.id}`,
-          type: 'mentorship',
-          title: `Mentorship request from ${req.startup.profiles.full_name}`,
-          time: req.created_at,
-          status: req.status
-        })
-      })
-
-      // Sort by time and take latest 10
-      activities.sort((a, b) => new Date(b.time) - new Date(a.time))
-      setRecentActivity(activities.slice(0, 10))
-    } catch (error) {
-      console.error('Error fetching recent activity:', error)
-    }
-  }
+  // Recent activity is now handled by the data service
 
   const handleRespondToRequest = async (requestId, action) => {
     try {
@@ -284,9 +185,13 @@ export default function MentorDashboard({ profile }) {
           {/* Recent Activity */}
           <div className="bg-white rounded-lg shadow-sm p-6">
             <h3 className="text-xl font-semibold text-gray-900 mb-4">Recent Activity</h3>
-            {recentActivity.length > 0 ? (
+            {tertiaryLoading ? (
+              <div className="text-center py-8">
+                <p className="text-gray-600">Loading...</p>
+              </div>
+            ) : tertiaryData?.recentActivity?.length > 0 ? (
               <div className="space-y-3">
-                {recentActivity.slice(0, 5).map((activity) => (
+                {tertiaryData.recentActivity.slice(0, 5).map((activity) => (
                   <div key={activity.id} className="flex items-start space-x-3 p-3 border border-gray-200 rounded-lg">
                     <div className="flex-shrink-0">
                       <div className="bg-gray-100 p-2 rounded-full">
@@ -322,26 +227,26 @@ export default function MentorDashboard({ profile }) {
         <div className="space-y-4">
           <div className="bg-white rounded-lg shadow-sm p-4 text-center">
             <div className="text-blue-600 text-2xl mb-2">👥</div>
-            <div className="text-2xl font-bold text-gray-900">{stats.connections}</div>
+            <div className="text-2xl font-bold text-gray-900">{essentialLoading ? '...' : essentialData?.stats?.connections || 0}</div>
             <div className="text-sm text-gray-700">Connections</div>
           </div>
 
           <div className="bg-white rounded-lg shadow-sm p-4 text-center">
             <div className="text-yellow-600 text-2xl mb-2">📋</div>
-            <div className="text-2xl font-bold text-gray-900">{stats.mentorshipRequests}</div>
+            <div className="text-2xl font-bold text-gray-900">{essentialLoading ? '...' : essentialData?.stats?.mentorshipRequests || 0}</div>
             <div className="text-sm text-gray-700">Pending Requests</div>
           </div>
 
           <div className="bg-white rounded-lg shadow-sm p-4 text-center">
             <div className="text-green-600 text-2xl mb-2">🎯</div>
-            <div className="text-2xl font-bold text-gray-900">{stats.activeMentorships}</div>
+            <div className="text-2xl font-bold text-gray-900">{essentialLoading ? '...' : essentialData?.stats?.activeMentorships || 0}</div>
             <div className="text-sm text-gray-700">Active Mentorships</div>
           </div>
 
           <div className="bg-white rounded-lg shadow-sm p-4 text-center">
             <div className="text-purple-600 text-2xl mb-2">💰</div>
             <div className="text-2xl font-bold text-gray-900">
-              Rs. {stats.totalEarnings.toLocaleString()}
+              Rs. {essentialLoading ? '...' : (essentialData?.stats?.totalEarnings || 0).toLocaleString()}
             </div>
             <div className="text-sm text-gray-700">Total Earnings</div>
           </div>
@@ -355,9 +260,13 @@ export default function MentorDashboard({ profile }) {
       {/* Pending Requests */}
       <div className="bg-white rounded-lg shadow-sm p-6">
         <h3 className="text-xl font-semibold text-gray-900 mb-4">Pending Requests</h3>
-        {mentorshipRequests.filter(req => req.status === 'pending').length > 0 ? (
+        {secondaryLoading ? (
+          <div className="text-center py-8">
+            <p className="text-gray-600">Loading...</p>
+          </div>
+        ) : secondaryData?.requests?.mentorship?.filter(req => req.status === 'pending').length > 0 ? (
           <div className="space-y-4">
-            {mentorshipRequests.filter(req => req.status === 'pending').map((request) => (
+            {secondaryData.requests.mentorship.filter(req => req.status === 'pending').map((request) => (
               <div key={request.id} className="border border-gray-200 rounded-lg p-4">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -398,9 +307,13 @@ export default function MentorDashboard({ profile }) {
       {/* Active Mentorships */}
       <div className="bg-white rounded-lg shadow-sm p-6">
         <h3 className="text-xl font-semibold text-gray-900 mb-4">Active Mentorships</h3>
-        {activeMentorships.length > 0 ? (
+        {secondaryLoading ? (
+          <div className="text-center py-8">
+            <p className="text-gray-600">Loading...</p>
+          </div>
+        ) : secondaryData?.requests?.mentorship?.filter(req => req.status === 'accepted').length > 0 ? (
           <div className="space-y-4">
-            {activeMentorships.map((mentorship) => (
+            {secondaryData.requests.mentorship.filter(req => req.status === 'accepted').map((mentorship) => (
               <div key={mentorship.id} className="border border-gray-200 rounded-lg p-4">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -432,9 +345,13 @@ export default function MentorDashboard({ profile }) {
   const renderConnections = () => (
     <div className="bg-white rounded-lg shadow-sm p-6">
       <h3 className="text-xl font-semibold text-gray-900 mb-4">Your Connections</h3>
-      {connections.length > 0 ? (
+      {secondaryLoading ? (
+        <div className="text-center py-8">
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      ) : secondaryData?.connections?.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {connections.map((connection) => (
+          {secondaryData.connections.map((connection) => (
             <div key={connection.id} className="border border-gray-200 rounded-lg p-4">
               <div className="flex items-center space-x-3">
                 <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
@@ -482,7 +399,7 @@ export default function MentorDashboard({ profile }) {
         </Link>
       </div>
 
-      {eventsLoading ? (
+      {tertiaryLoading ? (
         <div className="space-y-4">
           {[...Array(3)].map((_, i) => (
             <div key={i} className="bg-white rounded-lg shadow-sm p-6 animate-pulse">
@@ -492,9 +409,9 @@ export default function MentorDashboard({ profile }) {
             </div>
           ))}
         </div>
-      ) : registeredEvents.length > 0 ? (
+      ) : tertiaryData?.events?.length > 0 ? (
         <div className="space-y-4">
-          {registeredEvents.map((registration) => {
+          {tertiaryData.events.map((registration) => {
             const event = registration.event
             const isUpcoming = new Date(event.start_date) > new Date()
             const isPast = new Date(event.end_date) < new Date()
@@ -554,7 +471,9 @@ export default function MentorDashboard({ profile }) {
                               toast.error(result.error)
                             } else {
                               toast.success('Registration cancelled')
-                              fetchRegisteredEvents()
+                              // Refresh tertiary data to update events
+                              const newTertiaryData = await fetchTertiaryData(user, profile)
+                              setTertiaryData(newTertiaryData)
                             }
                           } catch (error) {
                             toast.error('Failed to cancel registration')
@@ -575,7 +494,7 @@ export default function MentorDashboard({ profile }) {
         <div className="text-center py-12">
           <div className="text-gray-400 text-6xl mb-4">📅</div>
           <h3 className="text-lg font-medium text-gray-900 mb-2">No Events Registered</h3>
-          <p className="text-gray-600 mb-4">You haven't registered for any events yet.</p>
+          <p className="text-gray-600 mb-4">You haven&apos;t registered for any events yet.</p>
           <Link 
             href="/explore?tab=events" 
             className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
@@ -587,40 +506,68 @@ export default function MentorDashboard({ profile }) {
     </div>
   )
 
+  const handleContactRecommendation = (recommendation, e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    const subject = `Mentorship Inquiry from ${profile?.full_name}`
+    const body = `Hi ${recommendation.title},\n\nI'm ${profile?.full_name}, a mentor on our startup platform. I came across your ${recommendation.type === 'startup' ? 'startup' : 'profile'} and would love to connect.\n\n${recommendation.type === 'startup' ? `I'm interested in potentially mentoring your team at ${recommendation.title}. I have expertise in areas that might be valuable for your ${recommendation.stage || 'current'} stage.` : 'I\'d like to explore potential collaboration opportunities.'}\n\nBest regards,\n${profile?.full_name}\n${profile?.roleSpecificData?.company || ''}`
+    
+    const mailtoLink = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+    window.open(mailtoLink, '_blank')
+  }
+
   const renderRecommendations = () => (
     <div className="bg-white rounded-lg shadow-sm p-6">
       <h3 className="text-xl font-semibold text-gray-900 mb-4">Recommendations</h3>
-      {recsLoading ? (
+      {tertiaryLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 6 }, (_, i) => (
             <RecommendationCardSkeleton key={i} />
           ))}
         </div>
-      ) : recs.length > 0 ? (
+      ) : tertiaryData?.recommendations?.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {recs.map((r) => (
-            <Link key={r.id} href={`/profile/${r.full_name ? generateSlug(r.full_name) : r.id}`}>
-              <div className="border border-gray-200 rounded-lg p-4 hover:shadow-md hover:border-blue-300 transition-all duration-200 cursor-pointer">
-                <div className="flex items-center space-x-3">
+          {tertiaryData.recommendations.map((r) => (
+            <div key={r.id || Math.random()} className="border border-gray-200 rounded-lg p-4 hover:shadow-md hover:border-blue-300 transition-all duration-200">
+              <Link href={r.link || '#'} className="block">
+                <div className="flex items-center space-x-3 mb-3">
                   <div className="w-12 h-12">
                     <Image
-                      src={r.avatar_url || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="100%" height="100%" rx="24" fill="%23e5e7eb"/></svg>'}
-                      alt={r.full_name || 'User'}
+                      src={r.image || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="100%" height="100%" rx="24" fill="%23e5e7eb"/></svg>'}
+                      alt={r.title || 'User'}
                       width={48}
                       height={48}
                       className="rounded-full object-cover"
                     />
                   </div>
                   <div className="flex-1">
-                    <h4 className="font-medium text-gray-900 hover:text-blue-600">{r.full_name || 'User'}</h4>
-                    <p className="text-sm text-gray-700 capitalize">{r.role}</p>
-                    {r.reasons?.length > 0 && (
-                      <p className="text-xs text-gray-500 mt-1">{r.reasons[0]}</p>
+                    <h4 className="font-medium text-gray-900 hover:text-blue-600">{r.title || 'User'}</h4>
+                    <p className="text-sm text-gray-700">{r.description}</p>
+                    {r.location && (
+                      <p className="text-xs text-gray-500 mt-1">📍 {r.location}</p>
+                    )}
+                    {r.stage && (
+                      <p className="text-xs text-blue-600 mt-1">{r.stage} stage</p>
                     )}
                   </div>
                 </div>
+              </Link>
+              <div className="flex space-x-2 mt-3 pt-3 border-t border-gray-100">
+                <Link 
+                  href={r.link || '#'} 
+                  className="flex-1 bg-blue-600 text-white text-center py-2 px-3 rounded-md text-sm hover:bg-blue-700 transition-colors"
+                >
+                  View Profile
+                </Link>
+                <button
+                  onClick={(e) => handleContactRecommendation(r, e)}
+                  className="flex-1 bg-gray-100 text-gray-700 text-center py-2 px-3 rounded-md text-sm hover:bg-gray-200 transition-colors"
+                >
+                  📧 Contact
+                </button>
               </div>
-            </Link>
+            </div>
           ))}
         </div>
       ) : (

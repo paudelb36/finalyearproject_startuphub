@@ -21,7 +21,7 @@ export default function ExplorePage() {
 
   useEffect(() => {
     fetchData()
-  }, [activeTab])
+  }, [activeTab, user])
 
   const fetchData = async () => {
     setLoading(true)
@@ -49,7 +49,7 @@ export default function ExplorePage() {
   }
 
   const fetchStartups = async () => {
-    const { data, error } = await supabase
+    let query = supabase
       .from('startup_profiles')
       .select(`
         *,
@@ -57,6 +57,13 @@ export default function ExplorePage() {
       `)
       .order('created_at', { ascending: false })
       .limit(20)
+
+    // Exclude logged-in user's profile
+    if (user) {
+      query = query.neq('user_id', user.id)
+    }
+
+    const { data, error } = await query
 
     if (error) {
       console.error('fetchStartups error:', error)
@@ -66,7 +73,7 @@ export default function ExplorePage() {
   }
 
   const fetchMentors = async () => {
-    const { data, error } = await supabase
+    let query = supabase
       .from('mentor_profiles')
       .select(`
         *,
@@ -74,6 +81,13 @@ export default function ExplorePage() {
       `)
       .order('created_at', { ascending: false })
       .limit(20)
+
+    // Exclude logged-in user's profile
+    if (user) {
+      query = query.neq('user_id', user.id)
+    }
+
+    const { data, error } = await query
 
     if (error) {
       console.error('fetchMentors error:', error)
@@ -83,7 +97,7 @@ export default function ExplorePage() {
   }
 
   const fetchInvestors = async () => {
-    const { data, error } = await supabase
+    let query = supabase
       .from('investor_profiles')
       .select(`
         *,
@@ -91,6 +105,13 @@ export default function ExplorePage() {
       `)
       .order('created_at', { ascending: false })
       .limit(20)
+
+    // Exclude logged-in user's profile
+    if (user) {
+      query = query.neq('user_id', user.id)
+    }
+
+    const { data, error } = await query
 
     if (error) {
       console.error('fetchInvestors error:', error)
@@ -241,7 +262,7 @@ export default function ExplorePage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {activeTab === 'startups' && filteredData().map((startup) => (
-              <Link key={startup.id} href={`/profile/${startup.profiles?.full_name ? generateSlug(startup.profiles.full_name) : startup.user_id}`}>
+              <Link key={startup.id} href={`/profile/${startup.profiles?.full_name ? generateSlug(startup.profiles.full_name) : (startup.user_id || 'unknown')}`}>
                 <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer">
                   <div className="flex items-start space-x-4">
                     <div className="w-12 h-12 bg-gray-200 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -273,7 +294,7 @@ export default function ExplorePage() {
             ))}
 
             {activeTab === 'mentors' && filteredData().map((mentor) => (
-              <Link key={mentor.id} href={`/profile/${mentor.profiles?.full_name ? generateSlug(mentor.profiles.full_name) : mentor.user_id}`}>
+              <Link key={mentor.id} href={`/profile/${mentor.profiles?.full_name ? generateSlug(mentor.profiles.full_name) : (mentor.user_id || 'unknown')}`}>
                 <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer">
                   <div className="flex items-start space-x-4">
                     <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
@@ -305,7 +326,7 @@ export default function ExplorePage() {
             ))}
 
             {activeTab === 'investors' && filteredData().map((investor) => (
-              <Link key={investor.id} href={`/profile/${investor.profiles?.full_name ? generateSlug(investor.profiles.full_name) : investor.user_id}`}>
+              <Link key={investor.id} href={`/profile/${investor.profiles?.full_name ? generateSlug(investor.profiles.full_name) : (investor.user_id || 'unknown')}`}>
                 <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer">
                   <div className="flex items-start space-x-4">
                     <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">

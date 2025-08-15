@@ -188,7 +188,7 @@ export default function DashboardPage() {
             Please log in to access your dashboard.
           </p>
           <Link
-            href="/auth/login"
+            href="/auth/signin"
             className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
           >
             Log In

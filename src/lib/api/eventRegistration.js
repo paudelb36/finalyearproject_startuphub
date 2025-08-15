@@ -218,43 +218,119 @@ export async function cancelEventRegistration(registrationId) {
  */
 export async function getUserEventRegistrations(userId, filters = {}) {
   try {
+    // First, let's try a simpler query without the nested join to see if RLS is the issue
     let query = supabase
       .from('event_registrations')
-      .select(`
-        *,
-        event:events(
-          id,
-          title,
-          description,
-          event_type,
-          start_date,
-          end_date,
-          location,
-          is_virtual,
-          status,
-          organizer:profiles!events_organizer_id_fkey(
-            id,
-            full_name,
-            avatar_url
-          )
-        )
-      `)
+      .select('*')
       .eq('user_id', userId)
 
     if (filters.status) {
       query = query.eq('status', filters.status)
     }
 
-    if (filters.upcoming) {
-      query = query.gte('event.start_date', new Date().toISOString())
+    const { data: registrations, error: regError } = await query.order('registered_at', { ascending: false })
+    
+    if (regError) {
+      console.error('Error fetching event registrations:', regError)
+      throw regError
     }
 
-    const { data, error } = await query.order('created_at', { ascending: false })
+    // If we have registrations, fetch the event details separately
+    if (!registrations || registrations.length === 0) {
+      return []
+    }
+
+    const eventIds = registrations.map(reg => reg.event_id)
+    const { data: events, error: eventsError } = await supabase
+      .from('events')
+      .select(`
+        id,
+        title,
+        description,
+        event_type,
+        start_date,
+        end_date,
+        location,
+        is_virtual,
+        status,
+        organizer_id
+      `)
+      .in('id', eventIds)
+
+    if (eventsError) {
+      console.error('Error fetching events:', eventsError)
+      throw eventsError
+    }
+
+    // Combine the data
+    const eventsMap = events?.reduce((acc, event) => {
+      acc[event.id] = event
+      return acc
+    }, {}) || {}
+
+    let combinedData = registrations.map(reg => ({
+      ...reg,
+      event: eventsMap[reg.event_id] || null
+    }))
+
+    // Apply upcoming filter if needed
+    if (filters.upcoming) {
+      const currentDate = new Date().toISOString()
+      combinedData = combinedData.filter(reg => 
+        reg.event && reg.event.start_date >= currentDate
+      )
+    }
+
+    const { data, error } = { data: combinedData, error: null }
     
-    if (error) throw error
+    if (error) {
+      console.error('Supabase query error in getUserEventRegistrations:', {
+        message: error?.message || 'Unknown error',
+        code: error?.code,
+        details: error?.details,
+        hint: error?.hint,
+        userId: userId,
+        filters: filters,
+        fullError: error
+      })
+      throw error
+    }
+    
+    // Fetch organizer details separately if needed
+    if (data && data.length > 0) {
+      const organizerIds = [...new Set(data.map(reg => reg.event?.organizer_id).filter(Boolean))]
+      
+      if (organizerIds.length > 0) {
+        const { data: organizers } = await supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url')
+          .in('id', organizerIds)
+        
+        // Map organizers to events
+        const organizerMap = organizers?.reduce((acc, org) => {
+          acc[org.id] = org
+          return acc
+        }, {}) || {}
+        
+        data.forEach(registration => {
+          if (registration.event?.organizer_id) {
+            registration.event.organizer = organizerMap[registration.event.organizer_id]
+          }
+        })
+      }
+    }
+    
     return data || []
   } catch (error) {
-    console.error('Error getting user event registrations:', error)
+    console.error('Error getting user event registrations:', {
+      message: error?.message || 'Unknown error',
+      code: error?.code,
+      details: error?.details,
+      hint: error?.hint,
+      userId: userId,
+      filters: filters,
+      fullError: error
+    })
     return []
   }
 }

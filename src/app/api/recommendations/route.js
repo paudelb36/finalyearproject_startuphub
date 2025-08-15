@@ -247,6 +247,11 @@ export async function GET(request) {
       if (final.length >= topK) break
     }
 
+
+
+
+
+    //Attribute -Based Matching 
     // Enhanced attribute-based recommendations - always run this for better results
     if (final.length < topK) {
       // Fetch candidate profiles by role with more comprehensive data

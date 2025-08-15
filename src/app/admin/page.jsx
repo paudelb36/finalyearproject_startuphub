@@ -61,18 +61,27 @@ const AdminDashboard = () => {
   const [editEvent, setEditEvent] = useState({});
 
   useEffect(() => {
-    // Bypass admin session check for development
-    // In production, you should implement proper admin authentication
-    const mockAdmin = {
-      id: 'dev-admin',
-      email: 'admin@dev.com',
-      full_name: 'Development Admin'
+    // Check for admin session in localStorage
+    const checkAdminSession = () => {
+      try {
+        const adminSession = localStorage.getItem('adminSession');
+        if (adminSession) {
+          const admin = JSON.parse(adminSession);
+          setAdminUser(admin);
+          setLoading(false);
+          // Load dashboard data
+          loadDashboardData();
+        } else {
+          // No admin session found, redirect to login
+          router.push('/admin/login');
+        }
+      } catch (error) {
+        console.error('Error checking admin session:', error);
+        router.push('/admin/login');
+      }
     };
-    setAdminUser(mockAdmin);
-    setLoading(false);
 
-    // Load dashboard data
-    loadDashboardData();
+    checkAdminSession();
   }, [router]);
 
   const loadDashboardData = async (filters = {}) => {

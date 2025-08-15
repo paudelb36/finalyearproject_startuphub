@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { useStore, useLoadingState } from '@/lib/store'
 import { supabase, generateSlug } from '@/lib/supabase'
@@ -11,26 +11,22 @@ import { getInvestmentRequests, respondToInvestmentRequest } from '@/lib/api/req
 import { getUserConnections, getConnectionStats } from '@/lib/api/connections'
 import { getUserEventRegistrations, cancelEventRegistration } from '@/lib/api/eventRegistration'
 import { RecommendationCardSkeleton } from '@/components/ui/LoadingSkeleton'
+import { fetchEssentialData, fetchSecondaryData, fetchTertiaryData } from '@/lib/services/dashboardDataService'
 
 export default function InvestorDashboard({ profile }) {
   const { user } = useAuth()
-  const [stats, setStats] = useState({
-    connections: 0,
-    investmentRequests: 0,
-    activeInvestments: 0,
-    totalInvested: 0
-  })
-  const [investmentRequests, setInvestmentRequests] = useState([])
-  const [activeInvestments, setActiveInvestments] = useState([])
-  const [connections, setConnections] = useState([])
-  const [recentActivity, setRecentActivity] = useState([])
-  const [registeredEvents, setRegisteredEvents] = useState([])
-  const [eventsLoading, setEventsLoading] = useState(false)
+  // Progressive loading states
+  const [essentialData, setEssentialData] = useState(null)
+  const [secondaryData, setSecondaryData] = useState(null)
+  const [tertiaryData, setTertiaryData] = useState(null)
+  const [essentialLoading, setEssentialLoading] = useState(true)
+  const [secondaryLoading, setSecondaryLoading] = useState(true)
+  const [tertiaryLoading, setTertiaryLoading] = useState(true)
+  
+  // Legacy states for events
+  // Registered events are now handled by tertiaryData
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
-  const getRecommendations = useStore((state) => state.getRecommendations)
-  const [recs, setRecs] = useState([])
-  const { loading: recsLoading } = useLoadingState('recommendations', user?.id ? `${user.id}_8` : 'anonymous_8')
   const [respondingTo, setRespondingTo] = useState(null)
   const [responseMessage, setResponseMessage] = useState('')
 
@@ -40,158 +36,45 @@ export default function InvestorDashboard({ profile }) {
     }
   }, [user, profile])
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(false) // Show dashboard immediately
-      // Load data independently without blocking UI
-      fetchStats()
-      fetchInvestmentRequests()
-      fetchConnections()
-      fetchRecentActivity()
-      fetchRecommendations()
-      fetchRegisteredEvents()
+      
+      // Progressive loading: Essential data first
+      setEssentialLoading(true)
+      const essential = await fetchEssentialData(user, profile)
+      setEssentialData(essential)
+      setEssentialLoading(false)
+      
+      // Secondary data
+      setSecondaryLoading(true)
+      const secondary = await fetchSecondaryData(user, profile)
+      setSecondaryData(secondary)
+      setSecondaryLoading(false)
+      
+      // Tertiary data (non-critical)
+      setTertiaryLoading(true)
+      const tertiary = await fetchTertiaryData(user, profile)
+      setTertiaryData(tertiary)
+      setTertiaryLoading(false)
+      
+      // Events are now loaded as part of tertiary data
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
       toast.error('Failed to load dashboard data')
+      setEssentialLoading(false)
+      setSecondaryLoading(false)
+      setTertiaryLoading(false)
     }
-  }
+  }, [user?.id, profile?.roleSpecificData?.id])
 
-  const fetchRecommendations = async () => {
-    try {
-      const recommendations = await getRecommendations(user.id, 8)
-      setRecs(recommendations || [])
-    } catch (e) {
-      console.error('fetchRecommendations error:', e)
-      setRecs([])
-    }
-  }
+  // Recommendations are now handled by the data service
 
-  const fetchRegisteredEvents = async () => {
-    try {
-      setEventsLoading(true)
-      const result = await getUserEventRegistrations(user.id)
-      if (result.error) {
-        console.error('Error fetching registered events:', result.error)
-        setRegisteredEvents([])
-      } else {
-        setRegisteredEvents(result.data || [])
-      }
-    } catch (error) {
-      console.error('Error fetching registered events:', error)
-      setRegisteredEvents([])
-    } finally {
-      setEventsLoading(false)
-    }
-  }
+  // Event fetching is now handled by the data service
 
-  const fetchStats = async () => {
-    try {
-      const connectionStats = await getConnectionStats(user.id)
-      
-      // Get investment request stats
-      const { data: investmentStats } = await supabase
-        .from('investment_requests')
-        .select('status')
-        .eq('investor_id', user.id)
+  // Stats, investment requests, and connections are now handled by the data service
 
-      const pendingRequests = investmentStats?.filter(req => req.status === 'pending').length || 0
-      const activeInvestments = investmentStats?.filter(req => req.status === 'accepted').length || 0
-
-      setStats({
-        connections: connectionStats.total_connections || 0,
-        investmentRequests: pendingRequests,
-        activeInvestments,
-        totalInvested: 0 // This would come from a transactions table
-      })
-    } catch (error) {
-      console.error('Error fetching stats:', error?.message || error)
-    }
-  }
-
-  const fetchInvestmentRequests = async () => {
-    try {
-      const response = await getInvestmentRequests(user.id, 'received')
-      const requests = response?.data || []
-      setInvestmentRequests(requests)
-      
-      const accepted = requests.filter(req => req.status === 'accepted') || []
-      setActiveInvestments(accepted)
-    } catch (error) {
-      console.error('Error fetching investment requests:', error?.message || error)
-      setInvestmentRequests([])
-      setActiveInvestments([])
-    }
-  }
-
-  const fetchConnections = async () => {
-    try {
-      const connectionsData = await getUserConnections(user.id)
-      setConnections(connectionsData || [])
-    } catch (error) {
-      console.error('Error fetching connections:', error?.message || error)
-    }
-  }
-
-  const fetchRecentActivity = async () => {
-    try {
-      const activities = []
-
-      // Recent connections
-      const { data: recentConnections } = await supabase
-        .from('connections')
-        .select(`
-          *,
-          requester:profiles!requester_id(full_name),
-          target:profiles!target_id(full_name)
-        `)
-        .or(`requester_id.eq.${user.id},target_id.eq.${user.id}`)
-        .order('created_at', { ascending: false })
-        .limit(5)
-
-      recentConnections?.forEach((conn) => {
-        const isRequester = conn.requester_id === user.id
-        activities.push({
-          id: `conn-${conn.id}`,
-          type: 'connection',
-          title: isRequester
-            ? `Connected with ${conn.target.full_name}`
-            : `${conn.requester.full_name} connected with you`,
-          time: conn.created_at,
-          status: conn.status
-        })
-      })
-
-      // Recent investment requests
-      const { data: recentRequests } = await supabase
-        .from('investment_requests')
-        .select(`
-          *,
-          startup:profiles!startup_id(
-            id,
-            full_name
-          )
-        `)
-        .eq('investor_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(5)
-
-      recentRequests?.forEach((req) => {
-        activities.push({
-          id: `invest-${req.id}`,
-          type: 'investment',
-          title: `Investment request from ${req.startup.profiles.full_name}`,
-          time: req.created_at,
-          status: req.status
-        })
-      })
-
-      // Sort by time and take latest 10
-      activities.sort((a, b) => new Date(b.time) - new Date(a.time))
-      setRecentActivity(activities.slice(0, 10))
-    } catch (error) {
-      console.error('Error fetching recent activity:', error?.message || error)
-    }
-  }
+  // Recent activity is now handled by the data service
 
   const handleRespondToRequest = async (requestId, action) => {
     try {
@@ -281,9 +164,13 @@ export default function InvestorDashboard({ profile }) {
           {/* Recent Activity */}
           <div className="bg-white rounded-lg shadow-sm p-6">
             <h3 className="text-xl font-semibold text-gray-900 mb-4">Recent Activity</h3>
-            {recentActivity.length > 0 ? (
+            {tertiaryLoading ? (
+              <div className="text-center py-8">
+                <p className="text-gray-600">Loading recent activity...</p>
+              </div>
+            ) : tertiaryData?.recentActivity?.length > 0 ? (
               <div className="space-y-3">
-                {recentActivity.slice(0, 5).map((activity) => (
+                {tertiaryData.recentActivity.slice(0, 5).map((activity) => (
                   <div key={activity.id} className="flex items-start space-x-3 p-3 border border-gray-200 rounded-lg">
                     <div className="flex-shrink-0">
                       <div className="bg-gray-100 p-2 rounded-full">
@@ -319,26 +206,32 @@ export default function InvestorDashboard({ profile }) {
         <div className="space-y-4">
           <div className="bg-white rounded-lg shadow-sm p-4 text-center">
             <div className="text-blue-600 text-2xl mb-2">👥</div>
-            <div className="text-2xl font-bold text-gray-900">{stats.connections}</div>
+            <div className="text-2xl font-bold text-gray-900">
+              {essentialLoading ? '...' : essentialData?.stats?.connections || 0}
+            </div>
             <div className="text-sm text-gray-700">Connections</div>
           </div>
 
           <div className="bg-white rounded-lg shadow-sm p-4 text-center">
             <div className="text-yellow-600 text-2xl mb-2">📋</div>
-            <div className="text-2xl font-bold text-gray-900">{stats.investmentRequests}</div>
+            <div className="text-2xl font-bold text-gray-900">
+              {essentialLoading ? '...' : essentialData?.stats?.investmentRequests || 0}
+            </div>
             <div className="text-sm text-gray-700">Pending Requests</div>
           </div>
 
           <div className="bg-white rounded-lg shadow-sm p-4 text-center">
             <div className="text-green-600 text-2xl mb-2">💰</div>
-            <div className="text-2xl font-bold text-gray-900">{stats.activeInvestments}</div>
+            <div className="text-2xl font-bold text-gray-900">
+              {essentialLoading ? '...' : essentialData?.stats?.activeInvestments || 0}
+            </div>
             <div className="text-sm text-gray-700">Active Investments</div>
           </div>
 
           <div className="bg-white rounded-lg shadow-sm p-4 text-center">
             <div className="text-purple-600 text-2xl mb-2">💵</div>
             <div className="text-2xl font-bold text-gray-900">
-              Rs. {stats.totalInvested.toLocaleString()}
+              Rs. {essentialLoading ? '...' : (essentialData?.stats?.totalInvested || 0).toLocaleString()}
             </div>
             <div className="text-sm text-gray-700">Total Invested</div>
           </div>
@@ -352,9 +245,13 @@ export default function InvestorDashboard({ profile }) {
       {/* Pending Requests */}
       <div className="bg-white rounded-lg shadow-sm p-6">
         <h3 className="text-xl font-semibold text-gray-900 mb-4">Pending Requests</h3>
-        {investmentRequests.filter(req => req.status === 'pending').length > 0 ? (
+        {secondaryLoading ? (
+          <div className="text-center py-8">
+            <p className="text-gray-600">Loading investment requests...</p>
+          </div>
+        ) : secondaryData?.requests?.investment?.filter(req => req.status === 'pending').length > 0 ? (
           <div className="space-y-4">
-            {investmentRequests.filter(req => req.status === 'pending').map((request) => (
+            {secondaryData.requests.investment.filter(req => req.status === 'pending').map((request) => (
               <div key={request.id} className="border border-gray-200 rounded-lg p-4">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -405,9 +302,13 @@ export default function InvestorDashboard({ profile }) {
       {/* Active Investments */}
       <div className="bg-white rounded-lg shadow-sm p-6">
         <h3 className="text-xl font-semibold text-gray-900 mb-4">Active Investments</h3>
-        {activeInvestments.length > 0 ? (
+        {secondaryLoading ? (
+          <div className="text-center py-8">
+            <p className="text-gray-600">Loading active investments...</p>
+          </div>
+        ) : secondaryData?.requests?.investment?.filter(req => req.status === 'accepted').length > 0 ? (
           <div className="space-y-4">
-            {activeInvestments.map((investment) => (
+            {secondaryData.requests.investment.filter(req => req.status === 'accepted').map((investment) => (
               <div key={investment.id} className="border border-gray-200 rounded-lg p-4">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -461,9 +362,13 @@ export default function InvestorDashboard({ profile }) {
   const renderConnections = () => (
     <div className="bg-white rounded-lg shadow-sm p-6">
       <h3 className="text-xl font-semibold text-gray-900 mb-4">Your Connections</h3>
-      {connections.length > 0 ? (
+      {secondaryLoading ? (
+        <div className="text-center py-8">
+          <p className="text-gray-600">Loading connections...</p>
+        </div>
+      ) : secondaryData?.connections?.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {connections.map((connection) => (
+          {secondaryData.connections.map((connection) => (
             <div key={connection.id} className="border border-gray-200 rounded-lg p-4">
               <div className="flex items-center space-x-3">
                 <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
@@ -502,7 +407,7 @@ export default function InvestorDashboard({ profile }) {
   const renderEvents = () => (
     <div className="bg-white rounded-lg shadow-sm p-6">
       <h3 className="text-xl font-semibold text-gray-900 mb-4">My Events</h3>
-      {eventsLoading ? (
+      {tertiaryLoading ? (
         <div className="space-y-4">
           {Array.from({ length: 3 }, (_, i) => (
             <div key={i} className="animate-pulse">
@@ -511,9 +416,9 @@ export default function InvestorDashboard({ profile }) {
             </div>
           ))}
         </div>
-      ) : registeredEvents.length > 0 ? (
+      ) : tertiaryData?.events?.length > 0 ? (
         <div className="space-y-4">
-          {registeredEvents.map((registration) => {
+          {tertiaryData.events.map((registration) => {
             const event = registration.events
             const eventDate = new Date(event.date)
             const now = new Date()
@@ -567,7 +472,9 @@ export default function InvestorDashboard({ profile }) {
                               toast.error('Failed to cancel registration')
                             } else {
                               toast.success('Registration cancelled successfully')
-                              fetchRegisteredEvents()
+                              // Refresh tertiary data to update events
+                              const newTertiaryData = await fetchTertiaryData(user, profile)
+                              setTertiaryData(newTertiaryData)
                             }
                           } catch (error) {
                             console.error('Error cancelling registration:', error)
@@ -589,7 +496,7 @@ export default function InvestorDashboard({ profile }) {
         <div className="text-center py-8">
           <p className="text-gray-600 mb-4">No events registered yet</p>
           <Link
-            to="/explore"
+            href="/explore"
             className="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
           >
             Browse Events
@@ -599,41 +506,71 @@ export default function InvestorDashboard({ profile }) {
     </div>
   )
 
+  const handleContactRecommendation = (recommendation, e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    const subject = `Investment Inquiry from ${profile?.full_name}`
+    const body = `Hi ${recommendation.title},\n\nI'm ${profile?.full_name}, an investor on our startup platform. I came across your ${recommendation.type === 'startup' ? 'startup' : 'profile'} and would love to connect.\n\n${recommendation.type === 'startup' ? `I'm interested in potentially investing in ${recommendation.title}. Based on your ${recommendation.stage || 'current'} stage and funding goal, this could be a great fit for my investment portfolio.` : 'I\'d like to explore potential investment opportunities.'}\n\nBest regards,\n${profile?.full_name}\n${profile?.roleSpecificData?.fund_name || ''}`
+    
+    const mailtoLink = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+    window.open(mailtoLink, '_blank')
+  }
+
   const renderRecommendations = () => (
     <div className="bg-white rounded-lg shadow-sm p-6">
       <h3 className="text-xl font-semibold text-gray-900 mb-4">Recommendations</h3>
-      {recsLoading ? (
+      {tertiaryLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 6 }, (_, i) => (
             <RecommendationCardSkeleton key={i} />
           ))}
         </div>
-      ) : recs.length > 0 ? (
+      ) : tertiaryData?.recommendations?.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {recs.map((r) => (
-            <Link key={r.id} href={`/profile/${r.full_name ? generateSlug(r.full_name) : r.id}`}>
-              <div className="border border-gray-200 rounded-lg p-4 hover:shadow-md hover:border-blue-300 transition-all duration-200 cursor-pointer">
-                <div className="flex items-center space-x-3">
-                  <div className="w-12 h-12">
-                    <Image
-                      src={r.avatar_url || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="100%" height="100%" rx="24" fill="%23e5e7eb"/></svg>'}
-                      alt={r.full_name || 'User'}
-                      width={48}
-                      height={48}
-                      className="rounded-full object-cover"
-                    />
+          {tertiaryData.recommendations.map((r) => {
+            return (
+              <div key={r.id || Math.random()} className="border border-gray-200 rounded-lg p-4 hover:shadow-md hover:border-blue-300 transition-all duration-200">
+                <Link href={r.link || '#'} className="block">
+                  <div className="flex items-center space-x-3 mb-3">
+                    <div className="w-12 h-12">
+                      <Image
+                        src={r.image || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="100%" height="100%" rx="24" fill="%23e5e7eb"/></svg>'}
+                        alt={r.title || 'User'}
+                        width={48}
+                        height={48}
+                        className="rounded-full object-cover"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-medium text-gray-900 hover:text-blue-600">{r.title || 'User'}</h4>
+                      <p className="text-sm text-gray-700">{r.description}</p>
+                      {r.location && (
+                        <p className="text-xs text-gray-500 mt-1">📍 {r.location}</p>
+                      )}
+                      {r.fundingGoal && (
+                        <p className="text-xs text-green-600 mt-1">Goal: ${r.fundingGoal.toLocaleString()}</p>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <h4 className="font-medium text-gray-900 hover:text-blue-600">{r.full_name || 'User'}</h4>
-                    <p className="text-sm text-gray-700 capitalize">{r.role}</p>
-                    {r.reasons?.length > 0 && (
-                      <p className="text-xs text-gray-500 mt-1">{r.reasons[0]}</p>
-                    )}
-                  </div>
+                </Link>
+                <div className="flex space-x-2 mt-3 pt-3 border-t border-gray-100">
+                  <Link 
+                    href={r.link || '#'} 
+                    className="flex-1 bg-blue-600 text-white text-center py-2 px-3 rounded-md text-sm hover:bg-blue-700 transition-colors"
+                  >
+                    View Profile
+                  </Link>
+                  <button
+                    onClick={(e) => handleContactRecommendation(r, e)}
+                    className="flex-1 bg-gray-100 text-gray-700 text-center py-2 px-3 rounded-md text-sm hover:bg-gray-200 transition-colors"
+                  >
+                    📧 Contact
+                  </button>
                 </div>
               </div>
-            </Link>
-          ))}
+            )
+          })}
         </div>
       ) : (
         <p className="text-gray-600">No recommendations yet</p>
